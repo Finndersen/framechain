@@ -5,7 +5,7 @@ log = logging.getLogger(__name__)
 
 
 class Asn1Decoder(object):
-    def __init__(self, record_schemas, header_trailer_lengths):
+    def __init__(self, record_schemas, header_trailer_lengths=None):
         """
         Initialise ASN1 Decoder class with configuration
 
@@ -57,7 +57,7 @@ class Asn1Decoder(object):
                 if self.asn_data[self.asn_index] in {0, 10}:
                     self.asn_index += 1
                 # Detect header/trailer (FD,LD,FT,LD)
-                elif bytes(self.asn_data[self.asn_index:self.asn_index + 2]) in self.header_trailer_lengths:
+                elif self.header_trailer_lengths and bytes(self.asn_data[self.asn_index:self.asn_index + 2]) in self.header_trailer_lengths:
                     # Skip header/trailer
                     header_len = self.header_trailer_lengths[bytes(self.asn_data[self.asn_index:self.asn_index + 2])]
                     self.asn_index += header_len

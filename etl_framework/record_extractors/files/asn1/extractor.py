@@ -14,7 +14,7 @@ class ASN1RecordExtractor(FileRecordExtractor):
     """
     RECORDTYPE_FIELD_NAME = 'asn1_record_type'
 
-    def __init__(self, file_reader, record_types, fields, head_trailer_lengths):
+    def __init__(self, file_reader, record_types, fields, head_trailer_lengths=None):
         """
         :param file_reader: callable to take file path and returned opened file object
         :param list/tuple of ASN1RecordType record_types: ASN1RecordType instances representing target recordtypes
