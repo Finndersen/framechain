@@ -12,7 +12,9 @@ class ETLProcessor(ConfigurableClass):
     Base class for ETL Processor
     Performs end-to-end ETL processing record extraction, transformation to output generation
     """
-    # Record extractor - Callable which takes ETL input parameter and returns Data Frame containing values in native types
+    # Input Reader - Callable which takes input parameter and returns data for Record Extractor
+    input_reader = None
+    # Record extractor - Callable which takes raw file/record data and returns Data Frame containing values in native types
     record_extractor = None
     # List/Tuple of operations to apply on dataframe (can be transforms, filters, validation). Each one is passed dataframe and returns a new one
     operations = []
@@ -29,11 +31,12 @@ class ETLProcessor(ConfigurableClass):
 
             set_context(self.get_context(etl_input))
 
+            input_reader = self.get_input_reader(etl_input)
             record_extractor = self.get_record_extractor(etl_input)
 
             # Extract records
             with LogDuration(log, 'Building dataframe from input...'):
-                dataframe = record_extractor(etl_input)
+                dataframe = (input_reader >> record_extractor)(etl_input)
 
             if dataframe.empty:
                 log.debug('No valid records extracted')
@@ -56,9 +59,17 @@ class ETLProcessor(ConfigurableClass):
         """
         return {}
 
-    def get_record_extractor(self, etl_input):
+    def get_input_reader(self, etl_input):
         """
         Get Record Extractor callable. If configuration should vary with input value, create record extractor in this method
+        :param etl_input:
+        :return:
+        """
+        return self.input_reader
+
+    def get_record_extractor(self, etl_input):
+        """
+        Get Record Extractor. If configuration should vary with input value, create record extractor in this method
         :param etl_input:
         :return:
         """

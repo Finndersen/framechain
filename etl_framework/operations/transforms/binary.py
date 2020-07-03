@@ -1,7 +1,8 @@
+"""
+Operations which do conversions to or from binary data (bytes)
+"""
 from datetime import date, time
-from etl_framework.operations.base import ColumnOperation, ScalarOperation
-import logging
-log = logging.getLogger(__name__)
+from etl_framework.operations import ScalarOperation
 
 
 class BytesToString(ScalarOperation):
@@ -13,6 +14,17 @@ class BytesToString(ScalarOperation):
 
     def __call__(self, byte_str):
         return byte_str.decode(self.encoding)
+
+
+class StringToBytes(ScalarOperation):
+    """
+    Encode string value to Bytes
+    """
+    def __init__(self, encoding="utf-8"):
+        self.encoding = encoding
+
+    def __call__(self, string):
+        return string.encode(encoding=self.encoding)
 
 
 class BytesToBoolean(ScalarOperation):
@@ -97,10 +109,7 @@ class IntToHexString(ScalarOperation):
         return hex_str
 
 
-##########################################################################################
-#   Conversions for ASN1 binary encoded data
-##########################################################################################
-class DurationToInt(ScalarOperation):
+class BinaryDurationToInt(ScalarOperation):
     """
     Convert duration in 3-byte binary format to single integer value.
     raw values should consist of 3 byte values, corresponding to duration in format hours, minutes and seconds

@@ -1,2 +1,1 @@
-from .basic import ValueIn, IsNull, If
-from .string import Contains
+from .string import StringContains, StringIsNumeric

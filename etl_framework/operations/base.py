@@ -2,6 +2,7 @@ from etl_framework.exceptions import ETLConfigurationError, UnsupportedOperatorE
 from etl_framework.utils import validate_callable
 import pandas as pd
 import operator, logging
+
 log = logging.getLogger(__name__)
 
 
@@ -58,7 +59,16 @@ class BaseOperation(object):
 
     """
     # Mapping of valid input types to valid output types (for when this class is called)
-    calling_translations = {}
+    # calling_translations = None
+
+    def error(self, exc_type, message):
+        """
+        Raise error for this operation
+        :param exc_type:
+        :param message:
+        :return:
+        """
+        raise exc_type('{} operation: {}'.format(type(self).__name__, message))
 
     def __call__(self, *args, **kwargs):
         raise NotImplementedError()
@@ -296,7 +306,7 @@ class SLICE(SingleOperandOperator):
         # Attempt to determine operation output type
         op_type_translation = TypeTranslations.get_for_operation(op)
         if len(op_type_translation) == 1:
-            self.result_type = op_type_translation.values()[0]
+            self.result_type = list(op_type_translation.values())[0]
         else:
             self.result_type = None
         super().__init__(op)
@@ -368,39 +378,6 @@ class THEN(BaseOperation):
         return '({}) -> ({})'.format(self.op1, self.op2)
 
 
-class DataframeOperation(BaseOperation):
-    """
-    Base class for operations that take entire dataframe and return single Series
-    """
-    calling_translations = {'dataframe': 'column'}
-
-    def __call__(self, dataframe):
-        """
-        Take dataframe and return series
-        :return: boolen series
-        """
-        raise NotImplementedError()
-
-
-class ColumnOperation(BaseOperation):
-    """
-    Base Class for operations that operate on one or more columns to perform vectorised condition logic and return single Series
-    Could be transforms, conditionals or converters
-    Use 'SelectField' operation or 'OnField' or 'MapFields' wrappers to supply individual column(s) from dataframe
-    """
-    calling_translations = {'column': 'column'}
-
-    # Whether the operation can change the DTYPE of the column. Used by ConvertField to decide whether to apply condition
-    changes_type = False
-
-    def __call__(self, *args, **kwargs):
-        """
-        Take one or more columns or scalar values
-        :return: series
-        """
-        raise NotImplementedError()
-
-
 class ScalarOperation(BaseOperation):
     """
     Operation that uses scalar logic to operate on one or more row values (when vectorisation is not possible)
@@ -453,17 +430,18 @@ class WrappingTypeTranslatorMixin(object):
         :param wrapped_operation: operation whos input will be provided by this wrapping class
         :return:
         """
-        wrapped_valid_translations = TypeTranslations.get_for_operation(wrapped_operation)
-        # Wrapping translations which are compatible with wrapped operation
-        valid_wrapping_translations = {wrapping_in: wrapped_valid_translations[wrapping_out]
-                                for wrapping_in, wrapping_out in self.wrapping_translations.items()
-                                if wrapping_out in wrapped_valid_translations}
-        if  valid_wrapping_translations:
-            # Filter valid translations using valid wrapping translations
-            self.calling_translations={key: val
-                                       for key,val in TypeTranslations.get_for_operation(self).items()
-                                       if key in valid_wrapping_translations}
-        else:
-            # Transform/wrapper not compatible with this wrapper
-            raise ETLConfigurationError(
-                '{} is not compatible with wrapper: {}'.format(type(wrapped_operation).__name__, type(self).__name__))
+        # Temporarily disabled. TODO: FIX
+        # wrapped_valid_translations = TypeTranslations.get_for_operation(wrapped_operation)
+        # # Wrapping translations which are compatible with wrapped operation
+        # valid_wrapping_translations = {wrapping_in: wrapped_valid_translations[wrapping_out]
+        #                         for wrapping_in, wrapping_out in self.wrapping_translations.items()
+        #                         if wrapping_out in wrapped_valid_translations}
+        # if  valid_wrapping_translations:
+        #     # Filter valid translations using valid wrapping translations
+        #     self.calling_translations={key: val
+        #                                for key,val in TypeTranslations.get_for_operation(self).items()
+        #                                if key in valid_wrapping_translations}
+        # else:
+        #     # Transform/wrapper not compatible with this wrapper
+        #     raise ETLConfigurationError(
+        #         '{} is not compatible with wrapper: {}'.format(type(wrapped_operation).__name__, type(self).__name__))

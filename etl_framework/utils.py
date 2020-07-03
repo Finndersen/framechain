@@ -9,6 +9,7 @@ class LogDuration(object):
     Wrapper class for timing and logging duration of activity
     """
     indent = 0
+
     def __init__(self, logger, message, level=logging.DEBUG):
         self.logger = logger
         self.level = level
@@ -21,7 +22,7 @@ class LogDuration(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         LogDuration.indent -= 1
-        self.logger.log(self.level, '{}Duration: {:.04f}'.format('\t'*LogDuration.indent, time.perf_counter() - self.start_time))
+        self.logger.log(self.level, '{}Duration: {:.05f}'.format('\t'*LogDuration.indent, time.perf_counter() - self.start_time))
 
 
 class Memoized(object):

@@ -1,11 +1,11 @@
-from etl_framework.operations.base import ColumnOperation, ScalarOrVectorOperation
+from etl_framework.operations import BaseOperation
 import re
 
-class Contains(ScalarOrVectorOperation):
+class StringContains(BaseOperation):
     """
-    Test whether string column values contain pattern or regex
+    Test whether string value contains pattern or regex
     """
-    def __init__(self, pattern, regex=False, input_type='column'):
+    def __init__(self, pattern, regex=False):
         """
 
         :param str pattern: search pattern
@@ -13,23 +13,17 @@ class Contains(ScalarOrVectorOperation):
         """
         self.pattern = re.compile(pattern) if regex else pattern
         self.regex = regex
-        super().__init__(input_type)
 
     def __call__(self, value):
-        if self.input_type == 'column':
-            return value.str.contains(self.pattern, regex=self.regex)
-        elif self.regex:
+        if self.regex:
             return self.pattern.search(value)
         else:
             return self.pattern in value
 
 
-class IsNumeric(ScalarOrVectorOperation):
+class StringIsNumeric(BaseOperation):
     """
-    Test whether string values are numeric
+    Test whether string value is numeric
     """
     def __call__(self, value):
-        if self.input_type == 'column':
-            return value.str.isnumeric()
-        else:
-            return value.isnumeric()
+        return value.isnumeric()
