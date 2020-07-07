@@ -11,8 +11,8 @@ log = darwin_logging.get_logger(__name__)
 class DelimitedRecordExtractor(BaseRecordExtractor):
     """
     Extract records from data file with fields seperated by delimiter character
-    Input data content needs to be ASCII text with newline character line seperators
     Wrapper around pandas.read_csv
+    Input is file reader object in text mode
     If file contains headers, field header_name attribute is used to match field
     Otherwise, Fields must provide
     """
@@ -37,7 +37,7 @@ class DelimitedRecordExtractor(BaseRecordExtractor):
         self.header = header
         super().__init__(fields)
 
-    def create_dataframe(self, file_data):
+    def create_dataframe(self, file_reader):
         # If file has headers, use_columns is list of field names, otherwise list of field positions
         use_columns = [field.column_id for field in self.fields]
         # Get mapping of field header names or column IDs to dtype definitions
@@ -47,7 +47,7 @@ class DelimitedRecordExtractor(BaseRecordExtractor):
         converters = {field.column_id: field.value_converter
                       for field in self.fields if field.value_converter}
 
-        dataframe = pd.read_csv(io.StringIO(file_data),
+        dataframe = pd.read_csv(file_reader,
                                 sep=self.delimiter,
                                 header=0 if self.header else None,
                                 quoting=self.quoting,

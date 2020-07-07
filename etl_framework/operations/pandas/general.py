@@ -30,14 +30,39 @@ class Field(BaseOperation):
         :param multiple_fields: Dataframe or Row containing multiple fields
         return:
         """
-        # Make copy of column to avoid SettingWithCopyWarning
-        if isinstance(multiple_fields, pd.DataFrame):
-            return multiple_fields[self.field_name]#.copy()
-        else:
-            return multiple_fields[self.field_name]
+        return multiple_fields[self.field_name]
 
     def __str__(self):
         return 'Field: "{}"'.format(self.field_name)
+
+
+class FieldExists(BaseOperation):
+    """
+    Check whether column exists in DataFrame
+    """
+
+    def __init__(self, field_name):
+        """
+
+        :param field_name: Name of column to select
+        """
+        if not isinstance(field_name, str):
+            raise ETLConfigurationError('Field name must be string')
+        self.field_name = field_name
+
+    def __call__(self, multiple_fields):
+        """
+        :param multiple_fields: Dataframe or Row containing multiple fields
+        return:
+        """
+        # Make copy of column to avoid SettingWithCopyWarning
+        if isinstance(multiple_fields, pd.DataFrame):
+            return self.field_name in multiple_fields.columns
+        elif isinstance(multiple_fields, pd.Series):
+            return self.field_name in multiple_fields.index
+        else:
+            raise ValueError('Expected Series or Dataframe, not "{}"'.format(multiple_fields))
+
 
 
 class ColumnMap(Map, ColumnOperation):

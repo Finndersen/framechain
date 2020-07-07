@@ -69,26 +69,28 @@ class BaseFileWriter(BaseOperation):
 class LocalFileWriter(BaseFileWriter):
     """
     Writer for writing to local filesystem
-    Provide with output path, and automatically creates any required directories
+    Provide with file data (either string or binary)
+    Automatically creates any required output directories
     Returns output file path
     """
 
-    def __init__(self, output_path=None, mode=None, newline='', compress=None):
+    def __init__(self, output_path=None, newline='', compress=None, append=False):
         """
 
         :param str output_path: output file path
-        :param str mode: Open mode. Use None to guess based on file data type
-        :param str newline: Newline character. Set to blank to avoid extra line terminators
+        :param str newline: Newline character. Set to blank to avoid extra line terminators. Only valid for text data
         :param bool compress: Whether to write file as compressed GZIP archive. Use None to infer
         If not specified, will infer from filename (True if ends in .gz)
+        :param bool append: whether to append to output file
+
         """
         super().__init__(output_path=output_path)
-        self.mode = mode
         self.newline = newline
         # Guess compression setting based on filename
         if compress is None:
             compress = output_path.endswith('.gz')
         self.compress = compress
+        self.append = append
 
     def write_data(self, file_data, output_path):
         # Create output directory if not exists (and absolute path provided)
@@ -96,20 +98,21 @@ class LocalFileWriter(BaseFileWriter):
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
 
-        # Guess open mode to use based on file data type
-        if self.mode is None:
-            if isinstance(file_data, str):
-                mode = 'wt'
-            else:
-                mode = 'wb'
+        # Determine write mode and newline parameter
+        mode = 'a' if self.append else 'w'
+
+        if isinstance(file_data, str):
+            mode += 't'
+            newline = self.newline
         else:
-            mode = self.mode
+            mode += 'b'
+            newline = None
 
         # Get file object
         if self.compress:
-            file = gzip.open(output_path, mode=mode, newline=self.newline)
+            file = gzip.open(output_path, mode=mode, newline=newline)
         else:
-            file = open(output_path, mode=mode, newline=self.newline)
+            file = open(output_path, mode=mode, newline=newline)
 
         # Write content to file
         with file as f:
@@ -126,7 +129,7 @@ class LocalFileWriter(BaseFileWriter):
         str = 'Write file'
         if self.output_path:
             str += ' at: {}'.format(self.output_path)
-        return  str
+        return str
 
 
 class HDFSFileSystemWriter(BaseFileWriter):

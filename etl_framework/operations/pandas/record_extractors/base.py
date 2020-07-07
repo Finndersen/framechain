@@ -16,7 +16,6 @@ class BaseRecordExtractor(BaseOperation):
     Must define 'create_dataframe' method which takes some input and produces DataFrame with raw field values
     Requires sequence of BaseField subclasses which correspond to columns in DataFrame and contain conversion logic
     """
-    calling_translations = {'input': 'dataframe'}
 
     def __init__(self, fields):
         """
@@ -31,31 +30,31 @@ class BaseRecordExtractor(BaseOperation):
             field_names.add(field.name)
         self.fields = fields
 
-    def __call__(self, etl_input):
+    def __call__(self, input_data):
         """
         Takes ETL input parameter and returns Pandas Dataframe
 
-        :param etl_input: ETL input parameter. Type depends on requirements of specific Record Extractor
+        :param input_data: ETL input data. Type depends on requirements of specific Record Extractor
         """
         with LogDuration(log, 'Extracting records from input...'):
-            dataframe = self.create_dataframe(etl_input)
+            dataframe = self.create_dataframe(input_data)
             #  Add any missing fields as Null column
             for field in self.fields:
                 if field.name not in dataframe.columns:
                     dataframe[field.name] = None
 
         if not dataframe.empty:
-            # Perform field vecttor conversions
+            # Perform field vector conversions
             with LogDuration(log, 'Performing vector field conversions...'):
                 for field in self.fields:
                     dataframe[field.name] = field.convert_column(dataframe[field.name])
 
         return dataframe
 
-    def create_dataframe(self, etl_input):
+    def create_dataframe(self, input_data):
         """
         Method used to generate dataframe containing raw field values
-        :param etl_input:
+        :param input_data:
         :return: pd.DataFrame
         """
         raise NotImplementedError()

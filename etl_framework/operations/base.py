@@ -215,20 +215,21 @@ class OperationsWithOperator(BaseOperation):
         assert operator_str in self.OPERATORS, '{} is not a valid operator string'.format(operator_str)
         self.operator_str = operator_str
         # Validate operation input types (both must have common valid input type)
-        op1_translations = TypeTranslations.get_for_operation(op1)
-        op2_translations = TypeTranslations.get_for_operation(op2)
-        # Check if operations are compatible with operators
-        for op in [op1, op2]:
-            TypeTranslations.check_operator_allowed(op, operator_str)
-        # Verify operations both have a shared input type
-        valid_inputs = set(op1_translations).intersection(set(op2_translations))
-        if not valid_inputs:
-            raise ETLConfigurationError('({}) and ({}) cannot be operated together because they do not share a common valid input type'.format(op1, op2))
-
-        # Use highest-hierarchy outputs (operating on scalar and vector will produce vector)
-        self.calling_translations = {in_type: max([op1_translations[in_type], op2_translations[in_type]],
-                                                  key=lambda out_type: TypeTranslations.TYPE_HIERARCHY[out_type])
-                                     for in_type in valid_inputs}
+        # TODO: Rework operation type compatability
+        # op1_translations = TypeTranslations.get_for_operation(op1)
+        # op2_translations = TypeTranslations.get_for_operation(op2)
+        # # Check if operations are compatible with operators
+        # for op in [op1, op2]:
+        #     TypeTranslations.check_operator_allowed(op, operator_str)
+        # # Verify operations both have a shared input type
+        # valid_inputs = set(op1_translations).intersection(set(op2_translations))
+        # if not valid_inputs:
+        #     raise ETLConfigurationError('({}) and ({}) cannot be operated together because they do not share a common valid input type'.format(op1, op2))
+        #
+        # # Use highest-hierarchy outputs (operating on scalar and vector will produce vector)
+        # self.calling_translations = {in_type: max([op1_translations[in_type], op2_translations[in_type]],
+        #                                           key=lambda out_type: TypeTranslations.TYPE_HIERARCHY[out_type])
+        #                              for in_type in valid_inputs}
 
     def __call__(self, *args, **kwargs):
         # Apply operator on output of two operands
@@ -345,11 +346,12 @@ class THEN(BaseOperation):
     (output types of op1 must be in op2 input types)
     """
     def __init__(self, op1, op2):
-        chained_translations = self.get_chained_calling_translations(op1, op2)
-        # Two operations are not compatible for chaining
-        if not chained_translations:
-            raise ETLConfigurationError('{} is not compatible to be chained with: {}'.format(op1, op2))
-        self.calling_translations = chained_translations
+        # TODO: Rework type compatability validation
+        # chained_translations = self.get_chained_calling_translations(op1, op2)
+        # # Two operations are not compatible for chaining
+        # if not chained_translations:
+        #     raise ETLConfigurationError('{} is not compatible to be chained with: {}'.format(op1, op2))
+        # self.calling_translations = chained_translations
         # Store operations
         self.op1 = op1
         self.op2 = op2
@@ -394,25 +396,6 @@ class ScalarOperation(BaseOperation):
         :return:
         """
         raise NotImplementedError()
-
-
-class ScalarOrVectorOperation(BaseOperation):
-    """
-    Operation which can take either scalar or vector input values
-    Should specify which type is expected when initialised
-    Behaviour can be adjusted depending on specified input type
-    """
-    calling_translations = {
-        'column': 'column',
-        'value': 'value'
-    }
-
-    def __init__(self, input_type='column'):
-        # Filter type translations
-        if input_type not in self.calling_translations:
-            raise ETLConfigurationError('Input type "{}" is invalid for {}'.format(input_type, type(self).__name__))
-        self.calling_translations = {input_type: self.calling_translations[input_type]}
-        self.input_type = input_type
 
 
 class WrappingTypeTranslatorMixin(object):

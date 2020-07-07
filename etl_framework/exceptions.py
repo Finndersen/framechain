@@ -47,9 +47,7 @@ class RecordLengthError(ETLRecordError):
     pass
 
 
-class RecordMatchError(ETLRecordError):
-    """When field data format is not as expected, or missing when mandatory"""
-    pass
+
 
 
 

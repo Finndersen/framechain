@@ -4,3 +4,4 @@ Operations which take some form of input (file data, list of dictionaries, etc) 
 from .asn1_ber import *
 from .ascii_position import ASCIIPartitionedRecordExtractor
 from .delimited import DelimitedRecordExtractor
+from .base import BaseRecordExtractor

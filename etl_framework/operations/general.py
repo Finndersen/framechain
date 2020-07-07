@@ -51,7 +51,7 @@ class If(BaseOperation):
             return self.false_operation(value)
 
     def __str__(self):
-        return 'If {} then ({}), else ({})'.format(self.condition.__name__, self.true_operation, self.false_operation)
+        return 'If {} then ({}), else ({})'.format(str(self.condition), self.true_operation, self.false_operation)
 
 
 class Fork(BaseOperation):
@@ -152,15 +152,15 @@ class Lambda(BaseOperation):
     Can optionally provide type translation for compatability validation
 
     """
-    def __init__(self, func, description, type_translation=None):
+    def __init__(self, func, description=None, type_translation=None):
         """
 
         :param func: Callable which takes input value, performs processing logic and returns output
-        :param description: Description of what function does
+        :param str description: Description of what function does
         :param type_translation: Optionally provide type translation of custom function
         """
         self.func = func
-        self.description = description
+        self.description = description or func.__name__
         if type_translation:
             self.calling_translations = type_translation
 
@@ -238,3 +238,28 @@ class DictWithError(dict):
 
     def __missing__(self, key):
         raise KeyError('Key: "{}" is missing from mapping dictionary'.format(key))
+
+
+class GetAttr(BaseOperation):
+    """
+    Return an attribute of input object
+    """
+    NOT_SPECIFIED = object()
+
+    def __init__(self, attr_name, default=NOT_SPECIFIED):
+        """
+
+        :param str attr_name: Attribute name to return
+        :param default: Default value to return if attribute does not exist
+        """
+        self.default = default
+        self.attr_name = attr_name
+
+    def __call__(self, obj):
+        if self.default == self.NOT_SPECIFIED:
+            return getattr(obj, self.attr_name)
+        else:
+            return getattr(obj, self.attr_name, self.default)
+
+    def __str__(self):
+        return 'Attribute: "{}"'.format(self.attr_name)

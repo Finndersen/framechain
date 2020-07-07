@@ -49,13 +49,13 @@ class ASN1BERRecordExtractor(BaseRecordExtractor):
         self.asn_decoder = asn1_decoder.ASN1BERDecoder(record_schemas, head_trailer_lengths)
         super().__init__(fields)
 
-    def create_dataframe(self, file_data):
-        return pd.DataFrame([record for record in self.get_records(file_data)])
+    def create_dataframe(self, file_reader):
+        return pd.DataFrame([record for record in self.get_records(file_reader)])
 
     def get_records(self, file_data):
         """
         Yield ASN1 records extracted from file as dictionaries
-        :param file_data:
+        :param bytes file_data: Binary file data
         :return:
         """
         self.asn_decoder.set_asn_data(file_data)

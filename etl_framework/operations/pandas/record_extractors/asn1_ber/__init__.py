@@ -1,2 +1,2 @@
 from .extractor import ASN1RecordType, ASN1BERRecordExtractor
-from .fields import IntegerField, StringField, TimeField, DateField, TBCDField, InputField, BCDTimestampField, BooleanField, ASN1BERField
+from .fields import IntegerField, StringField, TimeField, DateField, TBCDField, InputField, BCDTimestampField, BooleanField, ASN1BERField, IPAddressField

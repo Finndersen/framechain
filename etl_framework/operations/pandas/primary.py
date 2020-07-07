@@ -139,15 +139,17 @@ class DropColumns(DataframeOperation):
     """
     Used to drop columns from dataframe
     """
-    def __init__(self, columns):
+    def __init__(self, columns, errors='ignore'):
         """
 
         :param str/list columns: single column name or list of column names
+        :param str errors: action for handling errors
         """
         self.columns = columns
+        self.errors = errors
 
     def __call__(self, dataframe):
-        return dataframe.drop(self.columns, axis=1)
+        return dataframe.drop(self.columns, errors=self.errors, axis=1)
 
     def __str__(self):
         return 'Drop columns: {}'.format(self.columns)

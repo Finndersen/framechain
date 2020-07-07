@@ -20,9 +20,9 @@ class ASCIIPartitionedRecordExtractor(BaseRecordExtractor):
         self.header_lines = header_lines
         super().__init__(fields)
 
-    def create_dataframe(self, file_data):
+    def create_dataframe(self, input_data):
         # Create readable file object from data
-        file_reader = io.StringIO(file_data)
+        file_reader = io.StringIO(input_data)
         # Skip header lines
         for i in range(self.header_lines):
             line = file_reader.readline().strip()
