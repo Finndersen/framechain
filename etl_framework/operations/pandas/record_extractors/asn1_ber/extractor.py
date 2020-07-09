@@ -2,13 +2,13 @@ import pandas as pd
 from etl_framework import exceptions
 # from etl_framework.record_extractors.files.asn1 import asn1_decoder_cython
 from etl_framework.operations.pandas.record_extractors.asn1_ber import asn1_decoder
-from etl_framework.operations.pandas.record_extractors.base import BaseRecordExtractor
+from etl_framework.operations.pandas.record_extractors.base import BaseDataFrameGenerator
 import logging
 
 log = logging.getLogger(__name__)
 
 
-class ASN1BERRecordExtractor(BaseRecordExtractor):
+class ASN1BERRecordExtractor(BaseDataFrameGenerator):
     """
     Record extractor for BER encoded ASN1 files
     Takes binary file content, returns Dataframe of records

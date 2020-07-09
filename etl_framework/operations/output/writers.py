@@ -3,7 +3,7 @@ Operations for writing data to file
 """
 from etl_framework.operations import BaseOperation
 import os, gzip, sys, logging
-from hdfs import InsecureClient
+
 log = logging.getLogger(__name__)
 
 
@@ -146,6 +146,7 @@ class HDFSFileSystemWriter(BaseFileWriter):
         :param encoding: Encoding to apply to input data to convert to binary (set to None if binary data is provided)
         :param overwrite: Whether to overwrite existing files
         """
+        from hdfs import InsecureClient
         super().__init__(output_path=path)
         self.client = InsecureClient(url, user, timeout=1)
         self.url = url

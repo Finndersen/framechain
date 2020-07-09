@@ -88,7 +88,7 @@ class FieldLengthError(FieldValidationError):
     pass
 
 
-class FieldMandatoryError(FieldValidationError):
+class MandatoryFieldError(FieldValidationError):
     """When a mandatory field is missing"""
     pass
 
@@ -96,9 +96,6 @@ class FieldMandatoryError(FieldValidationError):
 class FieldLookupError(ETLFieldError):
     """When a lookup field contains a value not in lookup table"""
     pass
-
-
-
 
 
 class FieldTransformError(ETLFieldError):

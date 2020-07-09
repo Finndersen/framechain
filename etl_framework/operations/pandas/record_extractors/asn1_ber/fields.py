@@ -1,4 +1,4 @@
-from etl_framework.operations.transforms.datetime.parsers import StringToDatetime
+from etl_framework.operations.pandas.transforms import StringColumnToDatetime
 from etl_framework.operations.transforms.binary import BytesToString, BytesToBoolean, BytesToInteger, TBCDBytesToString, \
     BinaryToIPv4Address, BinaryToIPv6Address, BytesToDate, BytesToDateString, BytesToTime, BytesToTimeString, \
     BCDTimestampToString
@@ -86,9 +86,10 @@ class BCDTimestampField(ASN1BERField):
     """
     From BCD timestamp in format YYMMDDhhmmssShhmm to timezone-aware pd.datetime64
     Chain BCDTimestampToString and StringToDatetime converters
+    TODO: Check if its faster to do Scalar or Vector converter for string to datetime?
     """
     value_converter = BCDTimestampToString()
-    column_converter = StringToDatetime(format='%y%m%d%H%M%S%z')
+    column_converter = StringColumnToDatetime(format='%y%m%d%H%M%S%z')
 
 
 class TBCDField(ASN1BERField):

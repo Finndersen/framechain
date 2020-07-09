@@ -1,11 +1,12 @@
-from etl_framework.operations.pandas.record_extractors.delimited import log
 from etl_framework.operations.pandas.record_extractors.base import InputField
-from etl_framework.operations.pandas.record_extractors.base import BaseRecordExtractor
+from etl_framework.operations.pandas.record_extractors.base import BaseDataFrameGenerator
 import pandas as pd
-import io
+import io, logging
+
+log = logging.getLogger(__name__)
 
 
-class ASCIIPartitionedRecordExtractor(BaseRecordExtractor):
+class ASCIIPartitionedRecordExtractor(BaseDataFrameGenerator):
     """
     Extract records from data file content with fields seperated by position
     Input data needs to be ASCII text with newline character line seperators

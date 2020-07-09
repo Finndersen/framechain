@@ -31,6 +31,7 @@ class ToNumeric(ColumnOperation):
 
 class ToInteger(ColumnOperation):
     """
+    Convert column to Integer type
     Normally if source data for 'integer' field contains null values, pandas will convert Series type to float
     (normal integer type cannot represent null values)
     This converter changes dtype to new nullable integer type ('Int32'), if float conversion has occurred
@@ -41,8 +42,8 @@ class ToInteger(ColumnOperation):
     def __init__(self, int_size=32):
         self.converter = If(lambda s: not s.isnull().all(),
                             If(lambda s: 'float' in str(s.dtype),
-                               AsType('Int{}'.format(int_size)),
-                               ToNumeric()))
+                               AsType('Int{}'.format(int_size)),                    # Float with Nulls Nullable integer
+                               ToNumeric() >> AsType('Int{}'.format(int_size))))    # Str or other to nullable integer
 
     def __call__(self, column):
         return self.converter(column)

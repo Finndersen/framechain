@@ -3,8 +3,8 @@ Operations for parsing some kind of input (usually text) to datetime object
 """
 import re
 from datetime import time, date, datetime, timedelta
-from etl_framework.exceptions import ConverterConfigurationError, ETLError
-from etl_framework.operations import ScalarOperation
+from etl_framework.exceptions import ConverterConfigurationError, ETLError, ETLConfigurationError
+from etl_framework.operations import ScalarOperation, BaseOperation
 
 
 def StringToDatetime(format):
@@ -22,49 +22,24 @@ def StringToDatetime(format):
     """
     if format in PresetDateTimeParser.datetime_formats:
         return PresetDateTimeParser(format)
-    elif all(group_name in format for group_name in RegexUTCOffsetDateTimeParser.required_components):
-        return RegexUTCOffsetDateTimeParser(format)
-    elif all(group_name in format for group_name in RegexNaiveDateTimeParser.required_components):
-        return RegexNaiveDateTimeParser(format)
-    elif all(group_name in format for group_name in RegexDateParser.required_components):
-        return RegexDateParser(format)
-    elif all(group_name in format for group_name in RegexTimeParser.required_components):
-        return RegexTimeParser(format)
     else:
-        return BasicDatetimeParser(format)
+        try:
+            return RegexDateTimeParser(format)
+        except ETLConfigurationError:
+            return BasicDatetimeParser(format)
 
 
-class RegexTimeParser(ScalarOperation):
+class RegexDateTimeParser(BaseOperation):
     """
     Parse a text timestamp into a python time object, using regex pattern
     Faster than strptime, slower than PresetDateTimeParser but much more flexible
-    Regex pattern must include named groups of hour, minute and second
+    Output type depends on regex group names provided:
+    year, month, day: Date
+    hour, [minute, second]: Time
+    year, month, day, hour, [minute, second]:  DateTime
+    year, month, day, hour, [minute, second], offset_hours, offset_minutes, offset_sign: Subtract UTC offset to return Datetime in UTC
+    month value can be number or 3-character abbreviation
     """
-    required_components = ('hour', 'minute', 'second')
-
-    def __init__(self, regex_pattern):
-        """
-        :param str regex_pattern: Regex string pattern for timestamp string
-        """
-        self.regex_pattern = re.compile(regex_pattern)
-        # Validate regex has required components
-        for component in self.required_components:
-            if component not in self.regex_pattern.groupindex:
-                raise ConverterConfigurationError('Missing regex named group: "{}" required for {}'.format(component, type(self).__name__))
-
-    def __call__(self, raw_value):
-        match_dict = self.regex_pattern.fullmatch(raw_value).groupdict()
-        return time(int(match_dict['hour']), int(match_dict['minute']), int(match_dict['second']))
-
-
-class RegexDateParser(RegexTimeParser):
-    """
-    Parse a date string into a python date object, using regex pattern
-    Faster than strptime, slower than PresetDateTimeParser but much more flexible
-    Regex pattern must include named groups of year, month or month_abbrev, and day
-    """
-    required_components = ('year', 'day')
-
     # Mapping of Month Abbreviations to numbers
     month_abbrev_lookup = {
         'Jan': 1,
@@ -81,57 +56,58 @@ class RegexDateParser(RegexTimeParser):
         'Dec': 12
     }
 
-    def get_month_value(self, match_dict):
+    def __init__(self, regex_pattern):
         """
-        Get month value directly or translate from text abbreviation
-        :param match_dict:
+        :param str regex_pattern: Regex string pattern for timestamp string
+        """
+        self.pattern = re.compile(regex_pattern) if isinstance(regex_pattern, str) else regex_pattern
+        # Validate regex has required components
+        group_names = self.pattern.groupindex
+        self.has_date = all(x in group_names for x in ['year', 'month', 'day'])
+        self.has_time = 'hour' in group_names
+        self.has_utcoffset = all(x in group_names for x in ['offset_hours', 'offset_minutes', 'offset_sign'])
+        if not (self.has_date or self.has_time):
+            raise ETLConfigurationError('Regex pattern: {} does not contain Date or Time named groups'.format(regex_pattern))
+
+    def __call__(self, timestamp_str):
+        """
+
+        :param str timestamp_str: String containing timestamp
         :return:
         """
-        if 'month_abbrev' in match_dict:
-            return self.month_abbrev_lookup[match_dict['month_abbrev']]
+        match_dict = self.pattern.fullmatch(timestamp_str).groupdict()
+        # Create Datetime
+        if self.has_date and self.has_time:
+            dt = datetime(int(match_dict['year']), self.get_month_value(match_dict['month']), int(match_dict['day']),
+                          int(match_dict['hour']), int(match_dict.get('minute', 0)), int(match_dict.get('second', 0)))
+            # Subtract UTC Offset if present
+            if self.has_utcoffset:
+                offset_value = timedelta(hours=int(match_dict['offset_hours']), minutes=int(match_dict['offset_minutes']))
+                if match_dict['offset_sign'] == '+':
+                    return dt - offset_value
+                elif match_dict['offset_sign'] == '-':
+                    return dt + offset_value
+                else:
+                    raise ValueError('Invalid UTC offset sign: {}'.format(match_dict['offset_sign']))
+            else:
+                return dt
+        # Create Date
+        elif self.has_date:
+            return date(int(match_dict['year']), self.get_month_value(match_dict['month']), int(match_dict['day']))
+        # Create Time
         else:
-            return int(match_dict['month'])
+            return time(int(match_dict['hour']), int(match_dict.get('minute', 0)), int(match_dict.get('second', 0)))
 
-    def __call__(self, raw_value):
-        match_dict = self.regex_pattern.fullmatch(raw_value).groupdict()
-        return date(int(match_dict['year']), self.get_month_value(match_dict), int(match_dict['day']))
-
-
-class RegexNaiveDateTimeParser(RegexDateParser):
-    """
-    Parse a datetime string into a python naive datetime object, using regex pattern
-    Faster than strptime, slower than PresetDateTimeParser but much more flexible
-    Regex pattern must include named groups of: year, month or month_abbrev, day, hour, minute, second
-    """
-
-    required_components = RegexDateParser.required_components + ('hour', 'minute', 'second')
-
-    def __call__(self, raw_value):
-        match_dict = self.regex_pattern.fullmatch(raw_value).groupdict()
-        return datetime(int(match_dict['year']), self.get_month_value(match_dict), int(match_dict['day']),
-                        int(match_dict['hour']), int(match_dict['minute']), int(match_dict['second']))
-
-
-class RegexUTCOffsetDateTimeParser(RegexNaiveDateTimeParser):
-    """
-    Parse a datetime string with UTC offset value into a python naive datetime object in UTC time, using regex pattern
-    Faster than strptime, slower than PresetDateTimeParser but much more flexible
-    Regex pattern must include named groups of: year, month or month_abbrev, day, hour, minute, second, offset_sign, offset_hours, offset_minutes
-    """
-    required_components = RegexNaiveDateTimeParser.required_components + ('offset_hours', 'offset_minutes', 'offset_sign')
-
-    def __call__(self, raw_value):
-        match_dict = self.regex_pattern.fullmatch(raw_value).groupdict()
-        original_datetime =  datetime(int(match_dict['year']), self.get_month_value(match_dict), int(match_dict['day']),
-                                      int(match_dict['hour']), int(match_dict['minute']), int(match_dict['second']))
-
-        offset_value = timedelta(hours=int(match_dict['offset_hours']), minutes=int(match_dict['offset_minutes']))
-        if match_dict['offset_sign'] == '+':
-            return original_datetime - offset_value
-        elif match_dict['offset_sign'] == '-':
-            return original_datetime + offset_value
+    def get_month_value(self, match_val):
+        """
+        Get month value directly or translate from text abbreviation
+        :param match_val:
+        :return:
+        """
+        if match_val in self.month_abbrev_lookup:
+            return self.month_abbrev_lookup[match_val]
         else:
-            raise ETLError('Invalid UTC offset sign: {}'.format(match_dict['offset_sign']))
+            return int(match_val)
 
 
 class PresetDateTimeParser(ScalarOperation):
@@ -143,28 +119,29 @@ class PresetDateTimeParser(ScalarOperation):
     Can handle date, time or datetime formats
     """
     datetime_formats = {
-        'HHMMSS': (time, ((0, 2), (2, 4), (4, 6))),
-        'HH*MM*SS': (time, ((0, 2), (3, 5), (6, 8))),
-        'YYYYMMDD': (date, ((0, 4), (4, 6), (6, 8))),
-        'YYYY*MM*DD': (date, ((0, 4), (5, 7), (8, 10))),
-        'YYYYMMDDHHMMSS': (datetime, ((0, 4), (4, 6), (6, 8), (8, 10), (10, 12), (12, 14))),
-        'YYYY*MM*DD*HH*MM*SS': (datetime, ((0, 4), (5, 7), (8, 10), (11, 13), (14, 16), (17, 19))),
-        'YYYY*MM*DD*HH*MM*SS*mmmmmm': (datetime, ((0, 4), (5, 7), (8, 10), (11, 13), (14, 16), (17, 19), (20, 26))),
+        'HHMMSS': lambda s: time(int(s[0:2]), int(s[2:4]), int(s[4: 6])),
+        'HH*MM*SS': lambda s: time(int(s[0:2]), int(s[3:5]), int(s[6: 8])),
+        'YYYYMMDD': lambda s: date(int(s[0:4]), int(s[4:6]), int(s[6: 8])),
+        'YYYY*MM*DD': lambda s: date(int(s[0:4]), int(s[5:7]), int(s[8: 10])),
+        'YYYYMMDDHHMMSS': lambda s: datetime(int(s[0:4]), int(s[4:6]), int(s[6: 8]), int(s[8: 10]), int(s[10: 12]), int(s[12: 14])),
+        'YYYY*MM*DD*HH*MM*SS': lambda s: datetime(int(s[0:4]), int(s[5:7]), int(s[8: 10]), int(s[11: 13]), int(s[14: 16]), int(s[17: 19])),
+        'YYYY*MM*DD*HH*MM*SS*mmmmmm': lambda s: datetime(int(s[0:4]), int(s[5:7]), int(s[8: 10]), int(s[11: 13]), int(s[14: 16]), int(s[17: 19]), int(s[20: 26])),
+        'DD*MM*YYYY*HH*MM*SS': lambda s: datetime(int(s[6:10]), int(s[3:5]), int(s[0: 2]), int(s[11: 13]), int(s[14: 16]), int(s[17: 19])),
     }
 
     def __init__(self, datetime_format):
         self.datetime_format = datetime_format
         try:
-            self.parse_config = self.datetime_formats[datetime_format]
+            self.parse_func = self.datetime_formats[datetime_format]
         except KeyError:
             raise ConverterConfigurationError('{} is not a configured datetime format for {}. Valid options are: {}'.format(datetime_format, type(self).__name__, self.datetime_formats.keys()))
 
     def __call__(self, raw_value):
         # Handle special case of Time value that needs 0-padding on hour
-        if self.datetime_format == 'HH:MM:SS' and raw_value[1] == ':':
+        if self.datetime_format == 'HH*MM*SS' and raw_value[1] == ':':
             raw_value = '0' + raw_value
 
-        return self.parse_config[0](*[int(raw_value[str_pos[0]:str_pos[1]]) for str_pos in self.parse_config[1]])
+        return self.parse_func(raw_value)
 
 
 class BasicDatetimeParser(ScalarOperation):

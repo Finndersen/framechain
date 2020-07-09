@@ -1,14 +1,11 @@
 import csv, io
-from darwin.core import darwin_logging
 import pandas as pd
-from etl_framework.exceptions import ETLConfigurationError
-from etl_framework.operations.pandas.record_extractors.base import InputField, BaseRecordExtractor
+from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
+from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, IntegerFieldMixin, TimestampFieldMixin
 from etl_framework.operations.transforms import StringToDatetime
 
-log = darwin_logging.get_logger(__name__)
 
-
-class DelimitedRecordExtractor(BaseRecordExtractor):
+class DelimitedRecordExtractor(BaseDataFrameGenerator):
     """
     Extract records from data file with fields seperated by delimiter character
     Wrapper around pandas.read_csv
@@ -62,12 +59,17 @@ class DelimitedRecordExtractor(BaseRecordExtractor):
                    if field.column_id != field.name}
         dataframe.rename(columns=renames, inplace=True)
 
+        # Perform mandatory field validation
+        for field in self.fields:
+            if field.mandatory and dataframe[field.name].isnull().any():
+                raise MandatoryFieldError('Field: {} contains empty values'.format(field))
+
         return dataframe
 
 
 class CSVField(InputField):
     """
-    Object used to define details of a CSV field
+    Object representing field in delimited (e.g. CSV) file
     """
 
     def __init__(self, name, column_id=None, dtype=None, **kwargs):
@@ -83,7 +85,15 @@ class CSVField(InputField):
         super().__init__(name, **kwargs)
 
 
-class TimestampField(CSVField):
-    def __init__(self, name, format, **kwargs):
-        converter = StringToDatetime(format)
-        super().__init__(name, value_converter=converter, **kwargs)
+class IntegerField(IntegerFieldMixin, CSVField):
+    """
+    Field which converts values to Nullable Integer type
+    """
+    pass
+
+
+class TimestampField(TimestampFieldMixin, CSVField):
+    """
+    Field which converts values to Timestamp
+    """
+    pass

@@ -65,7 +65,7 @@ class STDINReader(BaseOperation):
         """
         self.binary = binary
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self):
         if self.binary:
             return sys.stdin.buffer
         else:

@@ -1,7 +1,8 @@
 from etl_framework.utils import LogDuration
 from etl_framework.operations.base import WrappingTypeTranslatorMixin, BaseOperation
-from etl_framework.exceptions import ETLConfigurationError
-from etl_framework.operations.pandas import ToInteger
+from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
+from etl_framework.operations.transforms import StringToDatetime
+from etl_framework.operations.pandas.transforms import ToInteger, SetColumnTimezone, StringColumnToDatetime
 import logging
 
 log = logging.getLogger(__name__)
@@ -10,16 +11,17 @@ log = logging.getLogger(__name__)
 ###########################################################################################
 # Record extractions take a file handle and yield records in the form of a list of field values
 ###########################################################################################
-class BaseRecordExtractor(BaseOperation):
+class BaseDataFrameGenerator(BaseOperation):
     """
-    Base class for Record Extractor interface
+    Base class for operation which extracts records from some input to generate a DataFrame
     Must define 'create_dataframe' method which takes some input and produces DataFrame with raw field values
     Requires sequence of BaseField subclasses which correspond to columns in DataFrame and contain conversion logic
     """
 
     def __init__(self, fields):
         """
-        :param fields: list/tuple of BaseField subclasses defining fields in file
+        :param fields: list/tuple of InputField subclasses defining fields to be extracted from input
+        and turned into DataFrame columns
         """
         # Validate field names are unique
         field_names = set()
@@ -62,21 +64,24 @@ class BaseRecordExtractor(BaseOperation):
 
 class InputField(WrappingTypeTranslatorMixin):
     """
-    Base class for defining a field from a data file, along with relevant conversion logic
+    Class for defining a field in a source data record which will correspond to a DataFrame column
     """
 
     column_converter = None
     value_converter = None
     calling_translations = wrapping_translations = {'dataframe': 'column'}
+    EMPTY_VALUES = {''}   # Values which will be converted to None
 
-    def __init__(self, name, column_converter=None, value_converter=None):
+    def __init__(self, name, mandatory=False, column_converter=None, value_converter=None):
         """
 
         :param str name: Name of field
+        :param bool mandatory: Whether field is mandatory
         :param callable column_converter: Custom converter function which takes column of raw field values, and returns column of converted values
         :param callable value_converter: Custom function which converts takes raw field value before Dataframe is constructed
         """
         self.name = name.lower()
+        self.mandatory = mandatory
         self.column_converter = column_converter or self.column_converter
         self.value_converter = value_converter or self.value_converter
         # Validate converter type compatability
@@ -98,10 +103,19 @@ class InputField(WrappingTypeTranslatorMixin):
 
     def convert_value(self, value):
         """
-        Perform single value conversion
+        Perform conversion and validation of raw field value
         :param value:
         :return:
         """
+        if value in self.EMPTY_VALUES:
+            value = None
+
+        if value is None:
+            if self.mandatory:
+                raise MandatoryFieldError('Mandatory field: {} has empty value'.format(self))
+            else:
+                return None
+
         if self.value_converter:
             return self.value_converter(value)
         else:
@@ -114,20 +128,32 @@ class InputField(WrappingTypeTranslatorMixin):
 class IntegerFieldMixin(object):
     """
     Mixin for integer type fields
-    Adds ToInteger() converter to ensure field stays as integer type even if it contains null values
+    Adds column converter to convert to nullable integer type if field is float type (due to null values)
     """
 
-    def __init__(self, *args, int_size=32, force_int=True, column_converter=None, **kwargs):
+    def __init__(self, *args, int_size=32, column_converter=None, **kwargs):
         """
 
         :param int int_size: Integer size in bits
         :param bool force_int: Whether to apply ToInteger() converter
         """
-        if force_int:
-            converter = ToInteger(int_size) >> column_converter if column_converter else ToInteger(int_size)
-        else:
-            converter = column_converter
+        converter = ToInteger(int_size)
+        if column_converter:
+            converter = converter >> column_converter
 
+        super().__init__(*args, column_converter=converter, **kwargs)
+
+
+class TimestampFieldMixin(object):
+    """
+    Mixin for Timestamp fields with optional timezone
+    """
+    def __init__(self, *args, time_format=None, timezone=None, **kwargs):
+        """
+
+        :param str time_format: Timestamp format string, or None to auto detect if in ISO format
+        :param str timezone: Timezone to apply to timestamp
+        """
         super().__init__(*args,
-                         column_converter=converter,
-                         **kwargs)
+                         column_converter=SetColumnTimezone(timezone) if timezone else None,
+                         value_converter=StringToDatetime(format=time_format), **kwargs)
