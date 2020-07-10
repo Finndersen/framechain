@@ -356,9 +356,9 @@ class THEN(BaseOperation):
         self.op1 = op1
         self.op2 = op2
 
-    def __call__(self, val):
+    def __call__(self, *args):
         # Return chained output.
-        return self.op2(self.op1(val))
+        return self.op2(self.op1(*args))
 
     def get_chained_calling_translations(self, op1, op2):
         """
