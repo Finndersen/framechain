@@ -48,7 +48,7 @@ class RegexRecordExtractor(BaseDataFrameGenerator):
             log.debug('Skipping header line: "{}"'.format(line))
 
         # Convert list of dictionary records into DataFrame
-        return pd.DataFrame(self.get_records(file_reader))
+        return pd.DataFrame(data=self.get_records(file_reader))
 
     def get_records(self, file_reader):
         """
@@ -61,16 +61,17 @@ class RegexRecordExtractor(BaseDataFrameGenerator):
             match = self.regex_pattern.match(recordline)
             if match:
                 match_groups = match.groups()
-                # Extract fields from matchdict and perform value conversion
+                # Extract fields and perform value conversion
                 yield {field.name: field.convert_value(match_groups[field.group_index]) for field in self.fields}
             elif self.enforce_match:
                 # Raise error for mismatching record line
                 self.error(RegexMatchError, 'Line: "{}"" does not match pattern: "{}"'.format(recordline, self.regex_pattern.pattern))
             else:
                 # Skip record
-                if log.level <= logging.DEBUG:
-                    log.debug('REGEX-MISMATCH',
-                              'Line: "{}"" does not match pattern: "{}"'.format(recordline, self.regex_pattern.pattern))
+                pass
+                # if log.level <= logging.DEBUG:
+                #     log.debug('REGEX-MISMATCH',
+                #               'Line: "{}"" does not match pattern: "{}"'.format(recordline, self.regex_pattern.pattern))
 
 
 class RegexField(InputField):

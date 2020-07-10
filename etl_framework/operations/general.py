@@ -21,7 +21,7 @@ class Input(BaseOperation):
         return value
 
     def __str__(self):
-        return 'NoOp'
+        return 'Input'
 
 
 class If(BaseOperation):

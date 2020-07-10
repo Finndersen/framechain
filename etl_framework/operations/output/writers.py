@@ -104,9 +104,11 @@ class LocalFileWriter(BaseFileWriter):
         if isinstance(file_data, str):
             mode += 't'
             newline = self.newline
-        else:
+        elif isinstance(file_data, (bytes, bytearray)):
             mode += 'b'
             newline = None
+        else:
+            self.error(ValueError, 'Input data must be string or bytes')
 
         # Get file object
         if self.compress:

@@ -131,17 +131,12 @@ class IntegerFieldMixin(object):
     Adds column converter to convert to nullable integer type if field is float type (due to null values)
     """
 
-    def __init__(self, *args, int_size=32, column_converter=None, **kwargs):
+    def __init__(self, *args, int_size=32, **kwargs):
         """
 
         :param int int_size: Integer size in bits
-        :param bool force_int: Whether to apply ToInteger() converter
         """
-        converter = ToInteger(int_size)
-        if column_converter:
-            converter = converter >> column_converter
-
-        super().__init__(*args, column_converter=converter, **kwargs)
+        super().__init__(*args, column_converter=ToInteger(int_size), **kwargs)
 
 
 class TimestampFieldMixin(object):

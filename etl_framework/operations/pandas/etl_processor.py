@@ -1,15 +1,13 @@
 import logging
-from .utils import LogDuration, ConfigurableClass
-from .context import set_context
-from .exceptions import ETLConfigurationError
-import pandas as pd
+from etl_framework.utils import LogDuration, ConfigurableClass
+from etl_framework.context import set_context
 
 log = logging.getLogger(__name__)
 
 
 class ETLProcessor(ConfigurableClass):
     """
-    Base class for ETL Processor
+    Base class for ETL Processor, tailored towards pandas/dataframe pipelines
     Performs end-to-end ETL processing record extraction, transformation to output generation
     """
     # Input Reader - Callable which takes input parameter and returns data for Record Extractor
@@ -45,8 +43,6 @@ class ETLProcessor(ConfigurableClass):
                 log.debug('Extracted {} records: \n{}\n{}'.format(len(dataframe.index), dataframe.head(10), dataframe.dtypes))
                 # Perform operations
                 dataframe = self._run_operations(etl_input, dataframe)
-                if isinstance(dataframe, pd.DataFrame) and not dataframe.empty:
-                    log.debug('Transformed Dataframe: \n{}\n{}'.format(dataframe.head(10),dataframe.dtypes))
 
             # Create output/export from records
             return self._get_result(etl_input, dataframe)
