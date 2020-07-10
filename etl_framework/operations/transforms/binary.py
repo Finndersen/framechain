@@ -167,7 +167,7 @@ class BytesToDate(ScalarOperation):
 class BytesToDateString(ScalarOperation):
     """
     Convert date in binary format to date string in format YYYY-MM-DD
-        Input value should be byte string of length 3.
+    Input value should be byte string of length 3.
     Byte 1: Year after 2000
     Byte 2: month
     BYte 3: Day

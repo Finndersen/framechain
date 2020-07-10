@@ -22,7 +22,7 @@ class Field(BaseOperation):
         :param field_name: Name of column to select
         """
         if not isinstance(field_name, str):
-            raise ETLConfigurationError('Field name must be string')
+            self.error(ETLConfigurationError, 'Field name must be string')
         self.field_name = field_name
 
     def __call__(self, multiple_fields):
@@ -47,7 +47,7 @@ class FieldExists(BaseOperation):
         :param field_name: Name of column to select
         """
         if not isinstance(field_name, str):
-            raise ETLConfigurationError('Field name must be string')
+            self.error(ETLConfigurationError, 'Field name must be string')
         self.field_name = field_name
 
     def __call__(self, multiple_fields):
@@ -61,8 +61,7 @@ class FieldExists(BaseOperation):
         elif isinstance(multiple_fields, pd.Series):
             return self.field_name in multiple_fields.index
         else:
-            raise ValueError('Expected Series or Dataframe, not "{}"'.format(multiple_fields))
-
+            self.error(ValueError, 'Expected Series or Dataframe, not "{}"'.format(multiple_fields))
 
 
 class ColumnMap(Map, ColumnOperation):
@@ -111,7 +110,7 @@ class Apply(OperationWrapper):
             self.error(ValueError, 'Input should be DataFrame or Series')
 
     def __str__(self):
-        return 'Apply ({}) to each row'.format(self.operation)
+        return 'Apply to each row: ({}) '.format(self.operation)
 
 
 class ColumnMask(OperationWrapper):

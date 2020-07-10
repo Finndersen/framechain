@@ -29,12 +29,12 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
         for field in fields:
             # Validate no field has same name as recordtype field name
             if field.name == self.RECORDTYPE_FIELD_NAME:
-                raise exceptions.ETLConfigurationError('ASN1 record schema defined with field name same as recordtype field name: {}'.format(self.RECORDTYPE_FIELD_NAME))
+                self.error(exceptions.ETLConfigurationError, 'ASN1 record schema defined with field name same as recordtype field name: {}'.format(self.RECORDTYPE_FIELD_NAME))
             # Validate all field mappings use defined recordtype
             if isinstance(field.asn_ids, dict):
                 for record_type_name in field.asn_ids:
                     if record_type_name not in record_type_names:
-                        raise exceptions.ETLConfigurationError('Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
+                        self.error(exceptions.ETLConfigurationError, 'Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
 
         # Build ASN1RecordSchema instances from record type and field definitions
         record_schemas = []

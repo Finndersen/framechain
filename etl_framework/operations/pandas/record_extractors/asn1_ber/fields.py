@@ -1,7 +1,7 @@
 from etl_framework.operations.pandas.transforms import StringColumnToDatetime
 from etl_framework.operations.transforms.binary import BytesToString, BytesToBoolean, BytesToInteger, TBCDBytesToString, \
     BinaryToIPv4Address, BinaryToIPv6Address, BytesToDate, BytesToDateString, BytesToTime, BytesToTimeString, \
-    BCDTimestampToString
+    BCDTimestampToString, BytesToHexString
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
 from etl_framework.operations.pandas.record_extractors.asn1_ber.asn1_decoder import ASN1BERRecordField
 from etl_framework.exceptions import ETLConfigurationError
@@ -58,13 +58,17 @@ class DateField(ASN1BERField):
     """
     From binary date in 3-byte format YYMMDD to datetime.date or string in YYYY-MM-DD format
     """
-    def __init__(self, *args, output_type='date', **kwargs):
-        if output_type == 'date':
-            converter = BytesToDate()
-        elif output_type == 'string':
+    def __init__(self, *args, to_string=False, **kwargs):
+        """
+
+        :param args:
+        :param bool to_string: Whether to produce date string output instead of date object
+        :param kwargs:
+        """
+        if to_string:
             converter = BytesToDateString()
         else:
-            raise ETLConfigurationError('DateField output_type must be "date" or "string"')
+            converter = BytesToDate()
         super().__init__(*args, value_converter=converter, **kwargs)
 
 
@@ -72,14 +76,19 @@ class TimeField(ASN1BERField):
     """
     From binary time in format HHMMSS to datetime.date
     """
-    def __init__(self, *args, output_type='time', **kwargs):
-        if output_type == 'time':
-            converter = BytesToTime()
-        elif output_type == 'string':
+    def __init__(self, *args, to_string=False, **kwargs):
+        if to_string:
             converter = BytesToTimeString()
         else:
-            raise ETLConfigurationError('TimeField output_type must be "time" or "string"')
+            converter = BytesToTime()
         super().__init__(*args, value_converter=converter, **kwargs)
+
+
+class BCDField(ASN1BERField):
+    """
+    Read binary data as Binary-Coded-Decimal
+    """
+    value_converter = BytesToHexString()
 
 
 class BCDTimestampField(ASN1BERField):
@@ -110,5 +119,5 @@ class IPAddressField(ASN1BERField):
         elif version == 'ipv6':
             converter = BinaryToIPv6Address()
         else:
-            raise ETLConfigurationError('IPAddressField version must be "ipv4" or "ipv6"')
+            raise ValueError('IPAddressField version must be "ipv4" or "ipv6"')
         super().__init__(*args, value_converter=converter, **kwargs)

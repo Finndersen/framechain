@@ -302,7 +302,7 @@ class SLICE(SingleOperandOperator):
         :param key: Slice or indexing key
         """
         if not isinstance(key, (slice, int)):
-            raise ETLConfigurationError('Indexing key must be integer or slice')
+            self.error(ValueError, 'Indexing key must be integer or slice')
         self.key=key
         # Attempt to determine operation output type
         op_type_translation = TypeTranslations.get_for_operation(op)

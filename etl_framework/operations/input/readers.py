@@ -107,7 +107,7 @@ class DecompressData(BaseOperation):
         :param str format: Compression format (GZIP, ZLIB, DEFLATE)
         """
         if format not in self.COMPRESS_FORMATS:
-            raise ValueError('Compression format must be one of: {}'.format(list(self.COMPRESS_FORMATS.keys())))
+            self.error(ValueError, 'Compression format must be one of: {}'.format(list(self.COMPRESS_FORMATS.keys())))
         self.format = format
 
     def __call__(self, compressed_data):

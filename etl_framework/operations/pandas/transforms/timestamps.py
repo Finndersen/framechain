@@ -44,7 +44,7 @@ class ToTimedelta(ColumnOperation):
         :param str units: Units of timedelta
         """
         if units not in self.VALID_UNITS:
-            raise ConverterConfigurationError('Invalid timedelta units: "{}"'.format(units))
+            self.error(ValueError, 'Invalid timedelta units: "{}". Choose from: {}'.format(units, self.VALID_UNITS))
         self.units=units
 
     def __call__(self, int_column):
