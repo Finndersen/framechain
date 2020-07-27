@@ -104,6 +104,7 @@ class ETLProcessor(ConfigurableClass):
             # Run operation
             with LogDuration(log, 'Running operation: {}'.format(operation)):
                 dataframe = operation(dataframe)
+                log.debug(dataframe.head())
 
         return dataframe
 

@@ -65,7 +65,7 @@ class BaseDataFrameGenerator(BaseOperation):
         raise NotImplementedError()
 
 
-class InputField(WrappingTypeTranslatorMixin):
+class InputField(object):
     """
     Class for defining a field in a source data record which will correspond to a DataFrame column
     """
@@ -87,9 +87,9 @@ class InputField(WrappingTypeTranslatorMixin):
         self.mandatory = mandatory
         self.column_converter = column_converter or self.column_converter
         self.value_converter = value_converter or self.value_converter
-        # Validate converter type compatability
-        if self.column_converter:
-            self.validate_wrapped_operation_compatability(self.column_converter)
+        # Validate converter type compatibility
+        # if self.column_converter:
+        #     self.validate_wrapped_operation_compatibility(self.column_converter)
 
     def convert_column(self, column):
         """
@@ -119,10 +119,20 @@ class InputField(WrappingTypeTranslatorMixin):
             else:
                 return None
 
+        self.validate_raw_value(value)
+
         if self.value_converter:
             return self.value_converter(value)
         else:
             return value
+
+    def validate_raw_value(self, value):
+        """
+        Validate non-null raw field value (before value conversion)
+        :param value:
+        :return:
+        """
+        pass
 
     def __str__(self):
         return '{}: "{}"'.format(type(self).__name__, self.name)

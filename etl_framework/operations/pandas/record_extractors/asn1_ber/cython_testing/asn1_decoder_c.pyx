@@ -26,9 +26,9 @@ cdef class Asn1Decoder(object):
         self.asn_index = self.current_depth = 0
         self.header_trailer_lengths = header_trailer_lengths
 
-        self.validate_record_schemas(record_schemas)
+        self.validate_record_types(record_schemas)
 
-        self.recordtype_depth = record_schemas[0].recordtype_depth
+        self.id_depth = record_schemas[0].id_depth
         # Build lookup dictionary of target record schemas with recordtype tag number as key
         self.record_schemas = {record_schema.recordtype_tag: record_schema for record_schema in record_schemas}
         #Cache to store decoded ASN1 tags (mapping of binary data to (tag_type, tag_number, value_length)
@@ -38,7 +38,7 @@ cdef class Asn1Decoder(object):
 
     cdef void validate_record_schemas(self, list record_schemas):
         # Validate record schemas have same record type depth
-        assert all([record_schema.recordtype_depth == record_schemas[0].recordtype_depth for record_schema in
+        assert all([record_schema.id_depth == record_schemas[0].id_depth for record_schema in
                     record_schemas]), "All record schemas must have same recordtype tag length"
 
     cpdef void set_asn_data(self, bytes asn_data):
@@ -161,7 +161,7 @@ cdef class Asn1Decoder(object):
 
         current_record = {}
         self.current_record_schema = None
-        self.traverse_asn(root_node, current_record=current_record)
+        self.traverse_asn(root_node, record_data=current_record)
         return current_record
 
     cdef void traverse_asn(self, object node, object current_record=None):
@@ -179,7 +179,7 @@ cdef class Asn1Decoder(object):
         if current_record is not None:
             # Detect start of record type
             if self.current_record_schema is None:
-                if self.current_depth == self.recordtype_depth:
+                if self.current_depth == self.id_depth:
                     if node.id in self.record_schemas:
                         # Set record type details
                         # log.debug("Setting record schema: {}".format(self.record_schemas[node.id]))
@@ -198,7 +198,7 @@ cdef class Asn1Decoder(object):
         # Go through children of constructed node
         if node.tag_type:
             self.current_depth += 1
-            self.traverse_asn(self.first_child_node(node), current_record=current_record)
+            self.traverse_asn(self.first_child_node(node), record_data=current_record)
             self.current_depth -= 1
         # Update current ASN index. If node is indefinite constructed, its end_pos will have been set by traversing children
         self.asn_index = node.end_pos
@@ -206,7 +206,7 @@ cdef class Asn1Decoder(object):
         if node.parent:
             # Continue to next node if not last child
             if not self.is_node_last_child(node):
-                self.traverse_asn(self.next_node(node), current_record=current_record)
+                self.traverse_asn(self.next_node(node), record_data=current_record)
             # If node is last child and parent is indefinite length, update parent's length
             elif node.parent.end_pos == 0:
                 node.parent.end_pos = node.end_pos + 2

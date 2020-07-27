@@ -22,7 +22,7 @@ class Asn1Decoder(object):
 
         self.validate_record_schemas(record_schemas)
 
-        self.recordtype_depth = record_schemas[0].recordtype_depth
+        self.recordtype_depth = record_schemas[0].id_depth
         # Build lookup dictionary of target record schemas with recordtype tag number as key
         self.record_schemas = {record_schema.recordtype_tag: record_schema for record_schema in record_schemas}
         #Cache to store decoded ASN1 tags (mapping of binary data to (tag_type, tag_number, value_length)
@@ -32,7 +32,7 @@ class Asn1Decoder(object):
 
     def validate_record_schemas(self, record_schemas):
         # Validate record schemas have same record type depth
-        assert all([record_schema.recordtype_depth == record_schemas[0].recordtype_depth for record_schema in
+        assert all([record_schema.id_depth == record_schemas[0].id_depth for record_schema in
                     record_schemas]), "All record schemas must have same recordtype tag length"
 
     def set_asn_data(self, asn_data):

@@ -103,7 +103,7 @@ class Apply(OperationWrapper):
         :return:
         """
         if isinstance(vector, pd.DataFrame):
-            return vector.apply(lambda row: self.operation(row), axis=1)
+            return vector.apply(lambda row: self.operation(row), axis=1, result_type='reduce')
         elif isinstance(vector, pd.Series):
             return vector.apply(lambda value: self.operation(value))
         else:
@@ -176,4 +176,4 @@ class ColumnOfValue(BaseOperation):
         return pd.Series([repeated_value] * len(vector.index))
 
     def __str__(self):
-        return 'Column with repeated value: {}'.format(self.value)
+        return 'Column with value: "{}"'.format(self.value)

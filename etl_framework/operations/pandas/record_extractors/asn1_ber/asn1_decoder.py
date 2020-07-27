@@ -5,30 +5,45 @@ log = logging.getLogger(__name__)
 
 
 class ASN1BERDecoder(object):
-    def __init__(self, record_schemas, header_trailer_lengths):
+    def __init__(self, record_types, fields, header_trailer_lengths):
         """
         Initialise ASN1 Decoder class with configuration
 
-        :param tuple/list record_schemas: List of ASN1RecordSchema instances representing recordtypes and fields to be extracted
+        :param list record_types: List of ASN1RecordType instances representing recordtypes of interest
+        :param list fields: List of ASN1BERField or subclasses, representing fields to be extracted
         :param header_trailer_lengths: Mapping which describes format of the ASCII File and Logical header and trailer lines within the ASN1 file.
             Keys are binary representations of the first 2 bytes of the header/trailer line (e.g. b'\x46\x44' which corresponds to 'FD')
             Values are length of header/trailer line (how many positions to skip)
         """
+        record_type_names = {record_type.name for record_type in record_types}
+        for field in fields:
+            # Validate all field mappings use defined recordtype
+            if isinstance(field.asn_ids, dict):
+                for record_type_name in field.asn_ids:
+                    if record_type_name not in record_type_names:
+                        raise exceptions.ETLConfigurationError('Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
 
-        self.asn_data = self.current_record_schema = None
+        self.asn_data = self.current_record_type = None
         self.asn_index = self.current_depth = 0
         self.header_trailer_lengths = header_trailer_lengths or {}
+        self.recordtype_depth = self.get_recordtype_depth(record_types)
 
-        self.validate_record_schemas(record_schemas)
+        self.target_recordtypes = {convert_asn_tag_to_unique_integer(record_type.asn_id): record_type
+                                   for record_type in record_types}
 
-        self.recordtype_depth = record_schemas[0].recordtype_depth
-        # Build lookup dictionary of target record schemas with recordtype tag number as key
-        self.record_schemas = {record_schema.recordtype_tag: record_schema for record_schema in record_schemas}
+        # Construct mapping of field unique ASN ID to field instance, for all target fields (across all record types)
+        self.target_fields = {}
+        for record_type in record_types:
+            for field in fields:
+                if field.applicable_to_record_type(record_type):
+                    field_absolute_id = convert_asn_tag_to_unique_integer(field.get_asn_id_for_record_type(record_type))
+                    self.target_fields[field_absolute_id] = field
 
-    def validate_record_schemas(self, record_schemas):
-        # Validate record schemas have same record type depth
-        assert all([record_schema.recordtype_depth == record_schemas[0].recordtype_depth for record_schema in
-                    record_schemas]), "All record schemas must have same recordtype tag length"
+    def get_recordtype_depth(self, record_types):
+        # Validate record types have same ASN ID depth
+        assert all([record_type.id_depth == record_types[0].id_depth for record_type in
+                    record_types]), "All record schemas must have same recordtype tag length"
+        return record_types[0].id_depth
 
     def set_asn_data(self, asn_data):
         """
@@ -39,7 +54,7 @@ class ASN1BERDecoder(object):
         """
         self.asn_data = asn_data
         self.asn_index = 0
-        self.current_record_schema = None
+        self.current_record_type = None
         self.current_depth = 0
 
     def skip_until_asn_block(self):
@@ -141,47 +156,44 @@ class ASN1BERDecoder(object):
         :param root_node:
         :return:
         """
-        current_record = {}
-        self.current_record_schema = None
-        self.traverse_asn(root_node, current_record=current_record)
-        return current_record
+        record_data = {}
+        self.current_record_type = None
+        self.traverse_asn(root_node, record_data=record_data)
+        return record_data
 
-    def traverse_asn(self, node, current_record=None):
+    def traverse_asn(self, node, record_data=None):
         """
         Traverse through an ASN1 node including all its children (if it is a constructed node)
         If current_record dictionary is supplied, it will look for fields defined in target_record_schema and populate current_record dictionary with the field value and field id as key
         :param dict node:
-        :param dict current_record:
+        :param dict record_data:
         :return:
         """
         # log.debug('Found ASN1 node: {} at Depth: {} '.format(node, self.current_depth))
         # If record is being built, detect recordtype or add node value
-        if current_record is not None:
-            # Detect start of record type
-            if self.current_record_schema is None and self.current_depth == self.recordtype_depth:
-                if node['id'] in self.record_schemas:
-                    # Set record type details
-                    # log.debug("Setting record schema: {}".format(self.record_schemas[node['id']]))
-                    self.current_record_schema = self.record_schemas[node['id']]
-                # Skip irrelevant record type
+        if record_data is not None:
+            # Skip irrelevant record type
+            if self.current_depth == self.recordtype_depth:
+                if node['id'] in self.target_recordtypes:
+                    self.current_record_type = self.target_recordtypes[node['id']]
                 else:
-                    # Skip record type
                     self.skip_node(node)
                     return
 
             # Add field data to record if ID is a target field
-            elif (not node['constructed']) and (node['id'] in self.current_record_schema.target_fields):
-                field = self.current_record_schema.target_fields[node['id']]
-                if field.name in current_record:
-                    # Do not currently support multiple instances of same field ID in record (e.g. in case of Sequence)
-                    raise exceptions.ETLError('Field: "{}" has already been populated in record'.format(field.name))
+            elif (not node['constructed']) and (node['id'] in self.target_fields):
+                field = self.target_fields[node['id']]
+                field_value = field.convert_value(self.get_node_value(node))
+                # Handle duplicate field entries (fields within SEQUENCE OF)
+                if field.name in record_data:
+                    record_data[field.name] = field.aggregate_values(record_data[field.name], field_value)
                 else:
-                    current_record[field.name] = field.convert_value(self.get_node_value(node))
+                    record_data[field.name] = field_value
 
         # Go through children of constructed node
         if node['constructed']:
             self.current_depth += 1
-            self.traverse_asn(self.first_child_node(node), current_record=current_record)
+            self.traverse_asn(self.first_child_node(node), record_data=record_data)
             self.current_depth -= 1
         # Update current ASN index. If node is indefinite constructed, its end_pos will have been set by traversing children
         self.asn_index = node['end_pos']
@@ -189,7 +201,7 @@ class ASN1BERDecoder(object):
         if node['parent']:
             # Continue to next node if not last child
             if not self.is_node_last_child(node):
-                self.traverse_asn(self.next_node(node), current_record=current_record)
+                self.traverse_asn(self.next_node(node), record_data=record_data)
             # If node is last child and parent is indefinite length, update parent's length
             elif node['parent']['end_pos'] == 0:
                 node['parent']['end_pos'] = node['end_pos'] + 2
@@ -256,68 +268,25 @@ class ASN1BERDecoder(object):
             raise exceptions.ASNDecodeError('Cant get child node of primitive node')
 
 
-class ASN1BERRecordSchema(object):
+def convert_asn_tag_to_unique_integer(asn_tag):
     """
-    Class which represents definition for an ASN1 record type schema.
-    Includes:
-    - Record type name
-    - List of IDs of fields to extract from ASN1 record
-
-    ASN tags are provided as string containing hyphen-seperated integers e.g. '0-1-4'
-    field_tags should be provided in format like:
-    (('a_party_number','0-4'), ('date_for_start_of_charging', '0-5-1-2'),...)
-
-    Will convert str field tags to unique integer representation and Build target field lookup dictionary in format:
-    {1024: 'a_party_number', 33621248: 'date_for_start_of_charging', ...}
-
+    Converts ASN tag in string form to unique integer which is more efficient for comparison and calculation
+    Assume maximum tag ID value is 255, meaning each successive tag depth gets bit shifted by 8 places then added
+    :param str asn_tag: ASN tag as string containing hyphen-seperated integers e.g. '0-1-4'
+    :return:
     """
-    def __init__(self, recordtype_name, recordtype_tag, fields):
-        """
-
-        :param str recordtype_name: Name of record type
-        :param str recordtype_tag: ASN1 tag ID corresponding to record type
-        :param tuple fields: list of ASN1RecordFields to extract from record type
-        """
-        self.recordtype_tag = self.convert_asn_tag_to_unique_integer(recordtype_tag)
-        self.recordtype_name = recordtype_name
-        self.recordtype_depth = len(recordtype_tag.split('-'))-1
-        # Build target field lookup dictionary
-        self.target_fields = {self.convert_asn_tag_to_unique_integer('-'.join([recordtype_tag, field.tag])): field for field in fields}
-
-    def __str__(self):
-        return '"{}" Record ({}) with fields: {}'.format(self.recordtype_name, self.recordtype_tag, self.target_fields)
-
-    @staticmethod
-    def convert_asn_tag_to_unique_integer(asn_tag):
-        """
-        Converts ASN tag in string form to unique integer which is more efficient for comparison and calculation
-        Assume maximum tag ID value is 255, meaning each successive tag depth gets bit shifted by 8 places then added
-        :param str asn_tag: ASN tag as string containing hyphen-seperated integers e.g. '0-1-4'
-        :return:
-        """
-        return sum((int(asn_id)+1)<<(8*i) for i, asn_id in enumerate(reversed(asn_tag.split('-'))))
+    return sum((int(asn_id) + 1) << (8 * i) for i, asn_id in enumerate(reversed(asn_tag.split('-'))))
 
 
-class ASN1BERRecordField(object):
+class ASN1RecordType(object):
     """
-    Object representing an ASN1 field within a record type
+    Simple object to define an ASN1 record type
     """
-    def __init__(self, name, tag, converter):
+    def __init__(self, name, asn_id):
         """
-
-        :param str name: Name of ASN1 field
-        :param str tag: Tag (ID) of field relative to record type
-        :param converter: callable to convert raw binary field value to desired type
+        :param str name: name of record type
+        :param str asn_id: constructed node ASN1 ID of record type (string of hyphen-seperated integers)
         """
         self.name = name
-        self.tag = tag
-        self.converter = converter
-
-    def convert_value(self, raw_value):
-        if self.converter:
-            return self.converter(raw_value)
-        else:
-            return raw_value
-
-
-
+        self.asn_id = asn_id
+        self.id_depth = len(asn_id.split('-')) - 1

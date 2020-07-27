@@ -55,9 +55,9 @@ class CreateColumn(DataframeOperation, WrappingTypeTranslatorMixin):
         # Get Masked/filtered version of Dataframe
         transform_input = self.get_transform_input(dataframe, mask)
         # Perform transformation on dataframe
-        output_series = self.transform(transform_input)#.copy())
+        output_series = self.transform(transform_input)
         if not isinstance(output_series, pd.Series):
-            self.error(ValueError, 'Transform: {} does not return a Series'.format(self.transform))
+            self.error(ValueError, 'Transform: {} returns: "{}", not return a Series'.format(self.transform, type(output_series)))
         # Add output Series back into original dataframe
         if mask is not None:
             dataframe.loc[mask, self.output_field] = output_series
