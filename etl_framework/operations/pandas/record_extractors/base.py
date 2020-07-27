@@ -51,6 +51,9 @@ class BaseDataFrameGenerator(BaseOperation):
                 for field in self.fields:
                     dataframe[field.name] = field.convert_column(dataframe[field.name])
 
+        # Order columns as input field order
+        dataframe = dataframe[[field.name for field in self.fields]]
+
         return dataframe
 
     def create_dataframe(self, input_data):
