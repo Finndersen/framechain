@@ -28,7 +28,7 @@ class SetColumn(DataframeOperation, WrappingTypeTranslatorMixin):
     Set a column/field values using a transformation operation. Creates new column if doesnt already exist in DataFrame
     Can provide a conditional operation which is used to create a mask
     """
-    calling_translations=wrapping_translations = {'dataframe': 'dataframe'}
+    calling_translations = wrapping_translations = {'dataframe': 'dataframe'}
 
     def __init__(self, output_field, transform, condition=None):
         """
@@ -57,15 +57,19 @@ class SetColumn(DataframeOperation, WrappingTypeTranslatorMixin):
         # Perform transformation on dataframe
         output_series = self.transform(transform_input)
         if not isinstance(output_series, pd.Series):
-            self.error(ValueError, 'Transform: {} returns: "{}", not return a Series'.format(self.transform, type(output_series)))
+            self.error(ValueError,
+                       'Transform: {} returns: "{}", not return a Series'.format(self.transform, type(output_series)))
         # Add output Series back into original dataframe
         if mask is not None:
             # Raise error if dtype of column has changed, can have undesired effect
-            if self.output_field in dataframe.columns and dataframe[self.output_field].dtype != output_series.dtype:
+            if (self.output_field in dataframe.columns
+                    and dataframe[self.output_field].dtype != 'object'
+                    and dataframe[self.output_field].dtype != output_series.dtype):
                 raise ChangedDataTypError(
-                    'Operation: "{}" changes datatype of masked values from "{}" to "{}", which may have undesired effect. Removing any conditions may resolve the issue'.format(self.transform,
-                                                                                                                                  dataframe[self.output_field].dtype,
-                                                                                                                                  output_series.dtype))
+                    'Operation: "{}" changes datatype of masked values from "{}" to "{}", which may have undesired effect. '
+                    'Removing any conditions may resolve the issue'.format(self.transform,
+                                                                           dataframe[self.output_field].dtype,
+                                                                           output_series.dtype))
             dataframe.loc[mask, self.output_field] = output_series
         else:
             dataframe[self.output_field] = output_series
@@ -82,7 +86,7 @@ class SetColumn(DataframeOperation, WrappingTypeTranslatorMixin):
         rep = 'Create field "{}" using transform: {}'.format(self.output_field, self.transform)
         if self.condition:
             rep = rep + ' with condition: {}'.format(self.condition)
-        return  rep
+        return rep
 
 
 class ConvertColumn(SetColumn):
@@ -103,10 +107,12 @@ class ConvertColumn(SetColumn):
         changes_type = getattr(column_transform, 'changes_type', False)
         # Add NotNull filter condition
         if not condition and not changes_type and ignore_null:
-            condition = Field(field)>>~IsNull()
+            condition = Field(field) >> ~IsNull()
         # Validate condition is not provided if transform changes data type of column
         if changes_type and condition:
-            self.error(ETLConfigurationError, 'Should not define condition for {} because it changes column data type'.format(column_transform))
+            self.error(ETLConfigurationError,
+                       'Should not define condition for {} because it changes column data type'.format(
+                           column_transform))
         super().__init__(field, column_transform, condition)
 
     def get_transform_input(self, dataframe, mask):
@@ -119,13 +125,15 @@ class ConvertColumn(SetColumn):
         return dataframe.loc[mask, self.output_field].copy() if mask is not None else dataframe[self.output_field]
 
     def __str__(self):
-        return 'Convert field "{}" using transform: {} with condition: {}'.format(self.output_field, self.transform, self.condition)
+        return 'Convert field "{}" using transform: {} with condition: {}'.format(self.output_field, self.transform,
+                                                                                  self.condition)
 
 
 class DeleteRows(DataframeOperation):
     """
     Operation used to filter DF on provided condition
     """
+
     def __init__(self, condition):
         """
         :param callable condition: Condition to filter row on. Takes DF and returns boolean mask
@@ -135,7 +143,8 @@ class DeleteRows(DataframeOperation):
     def __call__(self, dataframe):
         # Get masked/filtered DF
         filtered_df = dataframe.loc[~self.condition(dataframe)]
-        log.debug('Filtered out {} rows ({} remaining)'.format(len(dataframe.index) - len(filtered_df.index), len(filtered_df.index)))
+        log.debug('Filtered out {} rows ({} remaining)'.format(len(dataframe.index) - len(filtered_df.index),
+                                                               len(filtered_df.index)))
         # Return copy so that it is not a slice (which may raise SettingWithCopyWarning)
         return filtered_df.copy()
 
@@ -147,6 +156,7 @@ class DropColumns(DataframeOperation):
     """
     Used to drop columns from dataframe
     """
+
     def __init__(self, columns, errors='ignore'):
         """
 
@@ -167,6 +177,7 @@ class RenameColumns(DataframeOperation):
     """
     Operation for renaming columns
     """
+
     def __init__(self, **rename_mapping):
         """
 
@@ -185,6 +196,7 @@ class Sort(DataframeOperation):
     """
     Sort dataframe by columns
     """
+
     def __init__(self, sort_by, ascending=True):
         """
 
@@ -204,6 +216,7 @@ class Validate(DataframeOperation):
     """
     Raise exception if any rows do not match specified validation condition
     """
+
     def __init__(self, validation_condition, message=None):
         """
 
@@ -222,8 +235,9 @@ class Validate(DataframeOperation):
         fail_count = validation_fails.sum()
         if fail_count:
             self.error(ValidationError, '{} records failed validation: {}. Examples:\n{}'.format(fail_count,
-                                                                                           self.message,
-                                                                                           dataframe[validation_fails].head()))
+                                                                                                 self.message,
+                                                                                                 dataframe[
+                                                                                                     validation_fails].head()))
 
     def __str__(self):
         return 'Validate: {}'.format(self.message)
