@@ -52,7 +52,8 @@ class BaseDataFrameGenerator(BaseOperation):
                     dataframe[field.name] = field.convert_column(dataframe[field.name])
 
         # Order columns as input field order
-        dataframe = dataframe[[field.name for field in self.fields]]
+        if self.fields:
+            dataframe = dataframe[[field.name for field in self.fields]]
 
         return dataframe
 
@@ -83,7 +84,7 @@ class InputField(object):
         :param callable column_converter: Custom converter function which takes column of raw field values, and returns column of converted values
         :param callable value_converter: Custom function which converts takes raw field value before Dataframe is constructed
         """
-        self.name = name.lower()
+        self.name = name#.lower()
         self.mandatory = mandatory
         self.column_converter = column_converter or self.column_converter
         self.value_converter = value_converter or self.value_converter

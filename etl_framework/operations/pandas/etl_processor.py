@@ -1,6 +1,7 @@
 import logging
 from etl_framework.utils import LogDuration, ConfigurableClass
 from etl_framework.context import set_context
+import pandas as pd
 
 log = logging.getLogger(__name__)
 
@@ -104,7 +105,8 @@ class ETLProcessor(ConfigurableClass):
             # Run operation
             with LogDuration(log, 'Running operation: {}'.format(operation)):
                 dataframe = operation(dataframe)
-                log.debug(dataframe.head())
+                if isinstance(dataframe, pd.DataFrame):
+                    log.debug(dataframe.head())
 
         return dataframe
 

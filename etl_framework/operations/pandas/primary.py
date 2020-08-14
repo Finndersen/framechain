@@ -2,7 +2,7 @@
 Primary Pandas operations which take Dataframe and return Dataframe
 """
 import pandas as pd
-from etl_framework.exceptions import ValidationError, ETLConfigurationError
+from etl_framework.exceptions import ValidationError, ETLConfigurationError, ChangedDataTypError
 from etl_framework.operations.pandas import Field, IsNull
 from etl_framework.operations.base import BaseOperation, WrappingTypeTranslatorMixin
 import logging
@@ -23,9 +23,9 @@ class DataframeOperation(BaseOperation):
         raise NotImplementedError()
 
 
-class CreateColumn(DataframeOperation, WrappingTypeTranslatorMixin):
+class SetColumn(DataframeOperation, WrappingTypeTranslatorMixin):
     """
-    Create a new column/field using a transformation operation
+    Set a column/field values using a transformation operation. Creates new column if doesnt already exist in DataFrame
     Can provide a conditional operation which is used to create a mask
     """
     calling_translations=wrapping_translations = {'dataframe': 'dataframe'}
@@ -60,6 +60,12 @@ class CreateColumn(DataframeOperation, WrappingTypeTranslatorMixin):
             self.error(ValueError, 'Transform: {} returns: "{}", not return a Series'.format(self.transform, type(output_series)))
         # Add output Series back into original dataframe
         if mask is not None:
+            # Raise error if dtype of column has changed, can have undesired effect
+            if self.output_field in dataframe.columns and dataframe[self.output_field].dtype != output_series.dtype:
+                raise ChangedDataTypError(
+                    'Operation: "{}" changes datatype of masked values from "{}" to "{}", which may have undesired effect. Removing any conditions may resolve the issue'.format(self.transform,
+                                                                                                                                  dataframe[self.output_field].dtype,
+                                                                                                                                  output_series.dtype))
             dataframe.loc[mask, self.output_field] = output_series
         else:
             dataframe[self.output_field] = output_series
@@ -70,7 +76,7 @@ class CreateColumn(DataframeOperation, WrappingTypeTranslatorMixin):
         """
         Mask entire dataframe if appropriate
         """
-        return dataframe[mask] if mask is not None else dataframe
+        return dataframe[mask].copy() if mask is not None else dataframe
 
     def __str__(self):
         rep = 'Create field "{}" using transform: {}'.format(self.output_field, self.transform)
@@ -79,7 +85,7 @@ class CreateColumn(DataframeOperation, WrappingTypeTranslatorMixin):
         return  rep
 
 
-class ConvertColumn(CreateColumn):
+class ConvertColumn(SetColumn):
     """
     Apply a conversion operation to a single column
     """
@@ -110,7 +116,7 @@ class ConvertColumn(CreateColumn):
         :param mask:
         :return: potentially masked Series of target field
         """
-        return dataframe.loc[mask, self.output_field] if mask is not None else dataframe[self.output_field]
+        return dataframe.loc[mask, self.output_field].copy() if mask is not None else dataframe[self.output_field]
 
     def __str__(self):
         return 'Convert field "{}" using transform: {} with condition: {}'.format(self.output_field, self.transform, self.condition)
@@ -127,9 +133,11 @@ class DeleteRows(DataframeOperation):
         self.condition = validate_callable(condition, wrap_scalar=False)
 
     def __call__(self, dataframe):
+        # Get masked/filtered DF
         filtered_df = dataframe.loc[~self.condition(dataframe)]
         log.debug('Filtered out {} rows ({} remaining)'.format(len(dataframe.index) - len(filtered_df.index), len(filtered_df.index)))
-        return filtered_df
+        # Return copy so that it is not a slice (which may raise SettingWithCopyWarning)
+        return filtered_df.copy()
 
     def __str__(self):
         return 'Filter out rows which match condition: {}'.format(self.condition)
@@ -221,3 +229,31 @@ class Validate(DataframeOperation):
         return 'Validate: {}'.format(self.message)
 
 
+class FillColumnsNA(DataframeOperation):
+    """
+    Fill NA values of specified columns with particular value
+    """
+
+    def __init__(self, columns, value):
+        """
+        :param str/list columns: List of column names or single column name
+        :param value: static value or callable which returns scalar value
+        """
+        self.value = value
+        if isinstance(columns, str):
+            columns = [columns]
+        self.columns = columns
+
+    def __call__(self, dataframe):
+        """
+
+        :param dataframe: Dataframe or Series
+        :return:
+        """
+        fill_value = self.value(dataframe) if callable(self.value) else self.value
+        for column_name in self.columns:
+            dataframe[column_name].fillna(fill_value)
+        return dataframe
+
+    def __str__(self):
+        return 'Fill columns {} NA values with: "{}"'.format(self.columns, self.value)

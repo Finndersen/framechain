@@ -93,7 +93,10 @@ class SetColumnTimezone(ColumnOperation):
         return timestamp_column.dt.tz_localize(self.timezone)
 
     def __str__(self):
-        return 'Set timezone to: {}'.format(self.timezone)
+        if self.timezone:
+            return 'Set timezone to: {}'.format(self.timezone)
+        else:
+            return 'Remove timezone'
 
 
 class SetTimezone(BaseOperation):
@@ -137,7 +140,7 @@ class ConvertColumnTimezone(ColumnOperation):
     Set different_timezones=True if timestamps in column may have different timezones
     """
 
-    def __init__(self, timezone=pytz.utc, different_timezones=False):
+    def __init__(self, timezone='UTC', different_timezones=False):
         """
         :param str, pytz.timezone, dateutil.tz.tzfile timezone: Timezone to convert to (default to UTC).
             If None, will convert to UTC and remove timezone information

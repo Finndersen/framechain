@@ -2,7 +2,6 @@ from etl_framework.operations.base import BaseOperation, TypeTranslations
 from etl_framework.operations.general import Map
 from etl_framework.exceptions import ETLConfigurationError
 import pandas as pd
-
 from etl_framework.operations.pandas.base import ColumnOperation
 from etl_framework.operations.wrappers import OperationWrapper
 
@@ -113,40 +112,45 @@ class Apply(OperationWrapper):
         return 'Apply to each row: ({}) '.format(self.operation)
 
 
-class ColumnMask(OperationWrapper):
+class Mask(OperationWrapper):
     """
-    Masking wrapper which takes column, applies conditional logic to produce mask,
-    and passes masked column to wrapped operation, and then integrate output values into returned series
-    Full Dataframe mask wrapper would require knowledge of output column name, so then it effectively becomes a Transform Constructor
+    Masking wrapper which takes Dataframe or Column, applies conditional logic to produce mask,
+    and passes masked content to wrapped operation, and then integrates result back into original input
     """
-    condition_input_type = 'column'
-    wrapping_translations = calling_translations = {'column': 'column'}
+    wrapping_translations = calling_translations = {'column': 'column', 'dataframe': 'dataframe'}
 
     def __init__(self, condition, operation):
         """
 
-        :param condition: Callable which takes column and returns boolean series mask
+        :param condition: Callable which takes Dataframe or column and returns boolean series mask
         :param operation: Operation to pass masked column to
         """
         # Validate type compatability of condition
-        if self.condition_input_type not in TypeTranslations.get_for_operation(condition):
-            self.error(ETLConfigurationError, 'Condition: {} is not compatible'.format(condition))
+        # if self.condition_input_type not in TypeTranslations.get_for_operation(condition):
+        #     self.error(ETLConfigurationError, 'Condition: {} is not compatible'.format(condition))
         self.condition = condition
         super().__init__(operation)
 
-    def __call__(self, input_column):
+    def __call__(self, df_or_column):
         # Get mask using condition
-        mask = self.condition(input_column)
-        # Provide masked column to operation
-        transformed_values = self.operation(input_column.loc[mask])
-        # Make copy of column to avoid SettingWithCopyWarning
-        output_column = input_column.copy()
-        # Integrate values back into original column
-        output_column.loc[mask] = transformed_values
-        return output_column
+        mask = self.condition(df_or_column)
+        # Provide masked data to operation. Make copy to avoid SettingWithCopyWarning
+        transformed_values = self.operation(df_or_column.loc[mask].copy())
+        # Integrate values back into original Dataframe or column
+        df_or_column.loc[mask] = transformed_values
+
+        if isinstance(df_or_column, pd.DataFrame):
+            # Filter out any fully null rows in case DeleteRows operation was applied to masked content
+            df_or_column.dropna(how='all', inplace=True)
+            # Add in any extra columns that may have been added to masked Dataframe
+            for column_name in transformed_values.columns:
+                if column_name not in df_or_column.columns:
+                    df_or_column.loc[mask, column_name] = transformed_values[column_name]
+
+        return df_or_column
 
     def __str__(self):
-        return 'Select values which match condition ({}) and provide to ({})'.format(self.condition, self.operation)
+        return 'Mask with condition ({}) and apply ({})'.format(self.condition, self.operation)
 
 
 class ColumnOfValue(BaseOperation):
@@ -177,3 +181,25 @@ class ColumnOfValue(BaseOperation):
 
     def __str__(self):
         return 'Column with value: "{}"'.format(self.value)
+
+
+class FillNA(ColumnOperation):
+    """
+    Fill NA values of column with specified value
+    """
+    def __init__(self, value):
+        """
+
+        :param value: static value or callable which returns scalar value
+        """
+        self.value = value
+
+    def __call__(self, column):
+        """
+
+        :param column: Dataframe or Series
+        :return:
+        """
+        return column.fillna(self.value)
+
+

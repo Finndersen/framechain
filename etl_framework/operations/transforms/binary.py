@@ -96,42 +96,14 @@ class BinaryDurationToInt(ScalarOperation):
         return byte_val[0] * 3600 + byte_val[1] * 60 + byte_val[2]
 
 
-class TBCDBytesToString(ScalarOperation):
-    """
-    Convert binary number in Telephony Binary Coded Decimal nibble-swapped format to text string
-    This is a format often used to represent MSISDN, IMSI, IMEI numbers in ASN1 encoded data
-    """
-
-    def __call__(self, value):
-        # Nibble swap each octet and convert to hex string
-        hex_str = bytes((((x & 0x0F) << 4) + (x >> 4)) for x in value).hex()
-        # Strip Trailing 'f'
-        if hex_str[-1] == 'f':
-            hex_str = hex_str[:-1]
-        return hex_str
-
-
-class BinaryToIPv4Address(ScalarOperation):
-    """
-    Convert IPv4 address in binary format (4 bytes, each representing one address segment) to XXX.XXX.XXX.XXX format
-    """
-    def __call__(self, byte_str):
-        return '{}.{}.{}.{}'.format(byte_str[0], byte_str[1], byte_str[2], byte_str[3])
-
-
-class BinaryToIPv6Address(ScalarOperation):
-    """
-    Convert IPv6 address in Binary format (8x pairs of bytes) to string
-    COULD PROBABLY BE VECTORISED IF REQUIRED
-    """
-    def __call__(self, value):
-        hex_str = value.hex()
-        return ':'.join([hex_str[i * 4:(i * 4) + 4] for i in range(8)])
+#########################################
+# Telephone-related Binary data conversions
+#########################################
 
 
 class BytesToDate(ScalarOperation):
     """
-    Convert date in binary format to python date object
+    Convert date in binary format (YYMMDD) to python date object
     Input value should be byte string of length 3.
     Byte 1: Year after 2000
     Byte 2: month
@@ -156,7 +128,7 @@ class BytesToDateString(ScalarOperation):
 
 class BytesToTime(ScalarOperation):
     """
-    Convert time in binary format to python time object
+    Convert time in binary format (HHMMSS) to python time object
     Input value should be byte string of length 3.
     Byte 1: Hour
     Byte 2: Minute
@@ -178,9 +150,3 @@ class BytesToTimeString(ScalarOperation):
         return '{:02}:{:02}:{:02}'.format(raw_value[0], raw_value[1], raw_value[2])
 
 
-class BCDTimestampToString(ScalarOperation):
-    """
-    Convert BCD timestamp in format YYMMDDhhmmssShhmm to String
-    """
-    def __call__(self, value):
-        return value[:6].hex() + chr(value[6]) + value[7:].hex()

@@ -171,6 +171,32 @@ class Lambda(BaseOperation):
         return self.description
 
 
+class Collect(BaseOperation):
+    """
+    Collects an iterable into a list of values
+    """
+
+    def __call__(self, iterable):
+        return tuple(iterable)
+
+
+class Iterate(BaseOperation):
+    """
+    Iterates over provided iterator and execute provided operation on each element
+    Returns a generator of result of each item after being transformed by operation
+    """
+    def __init__(self, operation):
+        """
+
+        :param operation: Operation to run on each iterator item
+        """
+        self.operation = operation
+
+    def __call__(self, iterable):
+        for item in iterable:
+            yield self.operation(item)
+
+
 class Map(BaseOperation):
     """
     Provide mapping dictionary which will be used to translate values

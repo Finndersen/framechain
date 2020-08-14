@@ -74,7 +74,7 @@ class LocalFileWriter(BaseFileWriter):
     Returns output file path
     """
 
-    def __init__(self, output_path=None, newline='', compress=None, append=False):
+    def __init__(self, output_path=None, newline='', compress=None, append=False, overwrite=True):
         """
 
         :param str output_path: output file path
@@ -82,6 +82,7 @@ class LocalFileWriter(BaseFileWriter):
         :param bool compress: Whether to write file as compressed GZIP archive. Use None to infer
         If not specified, will infer from filename (True if ends in .gz)
         :param bool append: whether to append to output file
+        :param bool overwrite: Whether to overwrite existing file
 
         """
         super().__init__(output_path=output_path)
@@ -91,6 +92,7 @@ class LocalFileWriter(BaseFileWriter):
             compress = output_path.endswith('.gz')
         self.compress = compress
         self.append = append
+        self.overwrite = overwrite
 
     def write_data(self, file_data, output_path):
         # Create output directory if not exists (and absolute path provided)
@@ -99,7 +101,12 @@ class LocalFileWriter(BaseFileWriter):
             os.makedirs(dir_name, exist_ok=True)
 
         # Determine write mode and newline parameter
-        mode = 'a' if self.append else 'w'
+        if self.append:
+            mode = 'a'
+            write_path = output_path
+        else:
+            mode = 'w'
+            write_path = output_path + '.tmp'
 
         if isinstance(file_data, str):
             mode += 't'
@@ -110,18 +117,22 @@ class LocalFileWriter(BaseFileWriter):
         else:
             self.error(ValueError, 'Input data must be string or bytes')
 
-        # Get file object
-        if self.compress:
-            file = gzip.open(output_path, mode=mode, newline=newline)
-        else:
-            file = open(output_path, mode=mode, newline=newline)
+        # Delete existing file if overwrite enabled
+        if self.overwrite and os.path.isfile(output_path):
+            os.remove(output_path)
 
-        # Write content to file
+        # Write to temporary filename and rename when finished
+        if self.compress:
+            file = gzip.open(write_path, mode=mode, newline=newline)
+        else:
+            file = open(write_path, mode=mode, newline=newline)
+
         with file as f:
             f.write(file_data)
 
-    def verify(self, output_path):
-        if not os.path.isfile(output_path):
+        try:
+            os.rename(write_path, output_path)
+        except OSError:
             self.error(FileNotFoundError, 'Failed to write file at: {}'.format(output_path))
 
     def get_return_value(self, output_path):

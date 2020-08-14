@@ -48,7 +48,11 @@ class RecordLengthError(ETLRecordError):
 
 
 
-
+class ChangedDataTypError(ETLError):
+    """
+    Error for when operation changes datatype in masked transformation
+    """
+    pass
 
 
 
