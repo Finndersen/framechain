@@ -62,6 +62,9 @@ class FieldExists(BaseOperation):
         else:
             self.error(ValueError, 'Expected Series or Dataframe, not "{}"'.format(multiple_fields))
 
+    def __str__(self):
+        return 'Field "{}" exists'.format(self.field_name)
+
 
 class ColumnMap(Map, ColumnOperation):
     """
@@ -134,6 +137,8 @@ class Mask(OperationWrapper):
     def __call__(self, df_or_column):
         # Get mask using condition
         mask = self.condition(df_or_column)
+        if mask is not None and not (isinstance(mask, pd.Series) and mask.dtype == bool):
+            self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
         # Provide masked data to operation. Make copy to avoid SettingWithCopyWarning
         transformed_values = self.operation(df_or_column.loc[mask].copy())
         # Integrate values back into original Dataframe or column

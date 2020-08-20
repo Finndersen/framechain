@@ -50,7 +50,7 @@ class SetColumn(DataframeOperation, WrappingTypeTranslatorMixin):
         """
         # Generate transform mask with condition if appropriate
         mask = self.condition(dataframe) if self.condition else None
-        if mask is not None and not (isinstance(mask, pd.Series) and str(mask.dtype) == 'bool'):
+        if mask is not None and not (isinstance(mask, pd.Series) and mask.dtype == bool):
             self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
         # Get Masked/filtered version of Dataframe
         transform_input = self.get_transform_input(dataframe, mask)
@@ -61,12 +61,12 @@ class SetColumn(DataframeOperation, WrappingTypeTranslatorMixin):
                        'Transform: {} returns: "{}", not return a Series'.format(self.transform, type(output_series)))
         # Add output Series back into original dataframe
         if mask is not None:
-            # Raise error if dtype of column has changed, can have undesired effect
+            # Raise error if datetime dtype of column has changed (can cause issues with timezone mismatch)
             if (self.output_field in dataframe.columns
-                    and dataframe[self.output_field].dtype != 'object'
-                    and dataframe[self.output_field].dtype != output_series.dtype):
+                    and dataframe[self.output_field].dtype != output_series.dtype
+                    and 'datetime' in str(dataframe[self.output_field].dtype)):
                 raise ChangedDataTypError(
-                    'Operation: "{}" changes datatype of masked values from "{}" to "{}", which may have undesired effect. '
+                    'Operation: "{}" changes datetime datatype of masked values from "{}" to "{}", which may have undesired effect. '
                     'Removing any conditions may resolve the issue'.format(self.transform,
                                                                            dataframe[self.output_field].dtype,
                                                                            output_series.dtype))
@@ -83,7 +83,7 @@ class SetColumn(DataframeOperation, WrappingTypeTranslatorMixin):
         return dataframe[mask].copy() if mask is not None else dataframe
 
     def __str__(self):
-        rep = 'Create field "{}" using transform: {}'.format(self.output_field, self.transform)
+        rep = 'Set field "{}" value using transform: {}'.format(self.output_field, self.transform)
         if self.condition:
             rep = rep + ' with condition: {}'.format(self.condition)
         return rep
