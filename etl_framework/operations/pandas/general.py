@@ -137,7 +137,7 @@ class Mask(OperationWrapper):
     def __call__(self, df_or_column):
         # Get mask using condition
         mask = self.condition(df_or_column)
-        if mask is not None and not (isinstance(mask, pd.Series) and mask.dtype == bool):
+        if mask is not None and not pd.api.types.is_bool_dtype(mask):
             self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
         # Provide masked data to operation. Make copy to avoid SettingWithCopyWarning
         transformed_values = self.operation(df_or_column.loc[mask].copy())

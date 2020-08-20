@@ -50,7 +50,7 @@ class SetColumn(DataframeOperation, WrappingTypeTranslatorMixin):
         """
         # Generate transform mask with condition if appropriate
         mask = self.condition(dataframe) if self.condition else None
-        if mask is not None and not (isinstance(mask, pd.Series) and mask.dtype == bool):
+        if mask is not None and not pd.api.types.is_bool_dtype(mask):
             self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
         # Get Masked/filtered version of Dataframe
         transform_input = self.get_transform_input(dataframe, mask)
