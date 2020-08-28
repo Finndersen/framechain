@@ -56,20 +56,20 @@ class SetColumn(DataframeOperation, WrappingTypeTranslatorMixin):
         transform_input = self.get_transform_input(dataframe, mask)
         # Perform transformation on dataframe
         output_series = self.transform(transform_input)
-        # if not isinstance(output_series, pd.Series):
-        #     self.error(ValueError,
-        #                'Transform: {} returns: "{}", not return a Series'.format(self.transform, type(output_series)))
+        if not isinstance(output_series, pd.Series):
+            self.error(ValueError,
+                       'Transform: {} returns: "{}", not return a Series'.format(self.transform, type(output_series)))
         # Add output Series back into original dataframe
         if mask is not None:
-        #     # Raise error if datetime dtype of column has changed (can cause issues with timezone mismatch)
-        #     if (self.output_field in dataframe.columns
-        #             and dataframe[self.output_field].dtype != output_series.dtype
-        #             and 'datetime' in str(dataframe[self.output_field].dtype)):
-        #         raise ChangedDataTypError(
-        #             'Operation: "{}" changes datetime datatype of masked values from "{}" to "{}", which may have undesired effect. '
-        #             'Removing any conditions may resolve the issue'.format(self.transform,
-        #                                                                    dataframe[self.output_field].dtype,
-        #                                                                    output_series.dtype))
+            # Raise error if datetime dtype of column has changed (can cause issues with timezone mismatch)
+            if (self.output_field in dataframe.columns
+                    and dataframe[self.output_field].dtype != output_series.dtype
+                    and 'datetime' in str(dataframe[self.output_field].dtype)):
+                raise ChangedDataTypError(
+                    'Operation: "{}" changes datetime datatype of masked values from "{}" to "{}", which may have undesired effect. '
+                    'Removing any conditions may resolve the issue'.format(self.transform,
+                                                                           dataframe[self.output_field].dtype,
+                                                                           output_series.dtype))
             dataframe.loc[mask, self.output_field] = output_series
         else:
             dataframe[self.output_field] = output_series

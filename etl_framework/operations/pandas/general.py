@@ -182,7 +182,7 @@ class ColumnOfValue(BaseOperation):
         :return:
         """
         repeated_value = self.value(vector) if callable(self.value) else self.value
-        return pd.Series([repeated_value] * len(vector.index))
+        return pd.Series([repeated_value] * len(vector.index), index=vector.index)
 
     def __str__(self):
         return 'Column with value: "{}"'.format(self.value)
