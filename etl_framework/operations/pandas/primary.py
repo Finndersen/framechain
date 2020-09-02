@@ -212,37 +212,6 @@ class Sort(DataframeOperation):
         return 'Sort by: {}'.format(self.sort_by)
 
 
-class Validate(DataframeOperation):
-    """
-    Raise exception if any rows do not match specified validation condition
-    """
-
-    def __init__(self, validation_condition, message=None):
-        """
-
-        :param validation_condition: callable which takes dataframe and returns Boolean Series
-        :param message: Message describing validation condition
-        """
-        self.validation_condition = validation_condition
-        self.message = message or str(validation_condition)
-
-    def __call__(self, dataframe):
-        # Perform validation
-        validation_result = self.validation_condition(dataframe)
-        if not (isinstance(validation_result, pd.Series) and str(validation_result.dtype) == 'bool'):
-            self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.validation_condition))
-        validation_fails = ~validation_result
-        fail_count = validation_fails.sum()
-        if fail_count:
-            self.error(ValidationError, '{} records failed validation: {}. Examples:\n{}'.format(fail_count,
-                                                                                                 self.message,
-                                                                                                 dataframe[
-                                                                                                     validation_fails].head()))
-
-    def __str__(self):
-        return 'Validate: {}'.format(self.message)
-
-
 class FillColumnsNA(DataframeOperation):
     """
     Fill NA values of specified columns with particular value

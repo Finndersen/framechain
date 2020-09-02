@@ -1,4 +1,4 @@
-from etl_framework.operations.base import BaseOperation, TypeTranslations
+from etl_framework.operations.base import BaseOperation
 from etl_framework.operations.general import Map
 from etl_framework.exceptions import ETLConfigurationError
 import pandas as pd
@@ -33,37 +33,6 @@ class Field(BaseOperation):
 
     def __str__(self):
         return 'Field: "{}"'.format(self.field_name)
-
-
-class FieldExists(BaseOperation):
-    """
-    Check whether column exists in DataFrame
-    """
-
-    def __init__(self, field_name):
-        """
-
-        :param field_name: Name of column to select
-        """
-        if not isinstance(field_name, str):
-            self.error(ETLConfigurationError, 'Field name must be string')
-        self.field_name = field_name
-
-    def __call__(self, multiple_fields):
-        """
-        :param multiple_fields: Dataframe or Row containing multiple fields
-        return:
-        """
-        # Make copy of column to avoid SettingWithCopyWarning
-        if isinstance(multiple_fields, pd.DataFrame):
-            return self.field_name in multiple_fields.columns
-        elif isinstance(multiple_fields, pd.Series):
-            return self.field_name in multiple_fields.index
-        else:
-            self.error(ValueError, 'Expected Series or Dataframe, not "{}"'.format(multiple_fields))
-
-    def __str__(self):
-        return 'Field "{}" exists'.format(self.field_name)
 
 
 class ColumnMap(Map, ColumnOperation):
