@@ -1,11 +1,11 @@
 """
 Operations which read a file and produce binary file contents
 """
-from etl_framework.operations import BaseOperation
+from etl_framework.operations import Operation
 import gzip, sys, zlib, io
 
 
-class LocalFileReader(BaseOperation):
+class LocalFileReader(Operation):
     """
     Standard file reader for compressed or uncompressed files.
     Takes file path, returns file reader object opened in binary or text mode
@@ -29,7 +29,7 @@ class LocalFileReader(BaseOperation):
         self.binary = binary
         self.open_kwargs = open_kwargs
 
-    def __call__(self, file_path):
+    def action(self, file_path):
         mode = 'rb' if self.binary else 'rt'
 
         # Determine compression
@@ -50,7 +50,7 @@ class LocalFileReader(BaseOperation):
         return file
 
 
-class STDINReader(BaseOperation):
+class STDINReader(Operation):
     """
     Reads content from STDIN
     Requires no input value, returns stdin reader in text or binary mode
@@ -65,33 +65,33 @@ class STDINReader(BaseOperation):
         """
         self.binary = binary
 
-    def __call__(self):
+    def action(self):
         if self.binary:
             return sys.stdin.buffer
         else:
             return sys.stdin
 
-    def __str__(self):
+    def description(self):
         return 'Read data from STDIN'
 
 
-class Read(BaseOperation):
+class Read(Operation):
     """
     Reads content from a file object
     """
-    def __call__(self, file_reader):
+    def action(self, file_reader):
         return file_reader.read()
 
 
-class BytesReader(BaseOperation):
+class BytesReader(Operation):
     """
     Takes binary input and wraps in io.BytesIO to produce reader object
     """
-    def __call__(self, binary_data):
+    def action(self, binary_data):
         return io.BytesIO(binary_data)
 
 
-class DecompressData(BaseOperation):
+class DecompressData(Operation):
     """
     Decompress binary data, zipped using GZIP, ZLIB or DEFLATE formats
     """
@@ -110,5 +110,5 @@ class DecompressData(BaseOperation):
             self.error(ValueError, 'Compression format must be one of: {}'.format(list(self.COMPRESS_FORMATS.keys())))
         self.format = format
 
-    def __call__(self, compressed_data):
+    def action(self, compressed_data):
         return zlib.decompress(compressed_data, self.COMPRESS_FORMATS[self.format])

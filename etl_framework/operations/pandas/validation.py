@@ -1,9 +1,9 @@
-from etl_framework.operations.base import BaseOperation
+from etl_framework.operations.base import Operation
 from etl_framework.exceptions import ValidationError
 import pandas as pd
 
 
-class Validate(BaseOperation):
+class Validate(Operation):
     """
     Perform validation on DataFrame or Column values
     Provide an conditional operation which takes a Dataframe or Column (Series) and returns a boolean series
@@ -24,7 +24,7 @@ class Validate(BaseOperation):
         self.validation_condition = validation_condition
         self.message = message or str(validation_condition)
 
-    def __call__(self, vector):
+    def action(self, vector):
         # Perform validation
         validation_result = self.validation_condition(vector)
         if not pd.api.types.is_bool_dtype(validation_result):
@@ -36,5 +36,5 @@ class Validate(BaseOperation):
                                                                                                  self.message,
                                                                                                  vector[validation_fails].head()))
 
-    def __str__(self):
+    def description(self):
         return 'Validate: {}'.format(self.message)

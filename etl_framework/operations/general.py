@@ -3,28 +3,28 @@ Operations for controlling flow of pipeline
 """
 import copy, logging
 from etl_framework.context import transform_context
-from etl_framework.operations import BaseOperation
-from etl_framework.operations.base import TypeTranslations
-from etl_framework.utils import LogDuration
+from etl_framework.operations import Operation, CompoundOperation
+from etl_framework.operations.types import TypeTranslations
+from etl_framework.utils import LogDuration, randomstring
 
 log = logging.getLogger(__name__)
 
 
-class Input(BaseOperation):
+class NoOp(Operation):
     """
     Returns input value with no change
     Can be useful as initial operation in Transform to start chain
     """
     calling_translations = TypeTranslations.GENERIC_TYPE_TRANSLATIONS
 
-    def __call__(self, value):
+    def action(self, value):
         return value
 
-    def __str__(self):
+    def description(self):
         return 'Input'
 
 
-class If(BaseOperation):
+class If(CompoundOperation):
     """
     Conditional statement to choose between executing one or another operation
     """
@@ -33,28 +33,29 @@ class If(BaseOperation):
         'value': 'value'
     }
 
-    def __init__(self, condition, true_operation, false_operation=Input()):
+    def __init__(self, condition, true_operation, false_operation=None):
         """
 
         :param condition: Callable which takes input and returns True or False
         :param true_operation: Operation to execute if condition returns True
         :param false_operation: Operation to execute if condition returns False (defaults to no action)
         """
-        self.false_operation = false_operation
+        self.false_operation = false_operation or NoOp()
         self.true_operation = true_operation
         self.condition = condition
+        super().__init__([self.false_operation, self.true_operation, self.condition])
 
-    def __call__(self, value):
+    def action(self, value):
         if self.condition(value):
             return self.true_operation(value)
         else:
             return self.false_operation(value)
 
-    def __str__(self):
+    def description(self):
         return 'If {} then ({}), else ({})'.format(str(self.condition), self.true_operation, self.false_operation)
 
 
-class Fork(BaseOperation):
+class Fork(CompoundOperation):
     """
     Transformation which allows creating a fork in the execution pipeline
     Causes input value to be copied and provided to multiple operation chains
@@ -62,16 +63,17 @@ class Fork(BaseOperation):
     Each chain should end in an Output Generator because it can be cumbersome to aggregate or do further
     processing on the output sequence from this operation
     """
-    def __init__(self, *operation_chains):
+    def __init__(self, *fork_operations):
         """
 
-        :param operation_chains: Sequence of operation chains to execute with single input. Each item can be a list of
-        operations, or a single operation (potentially a chain of operations using >> operator)
+        :param Operation fork_operations: Sequence of operation chains to execute with single input.
         """
-        self.operation_chains = [op_chain if isinstance(op_chain, (tuple, list)) else [op_chain]
-                                 for op_chain in operation_chains]
+        if len(fork_operations) < 2:
+            self.error(ValueError, 'Provide at least 2 operations to Fork')
+        self.fork_operations = list(fork_operations)
+        super().__init__(self.fork_operations)
 
-    def __call__(self, input_val):
+    def action(self, input_val):
         """
 
         :param input_val: Input value to provide to all operation chains
@@ -80,21 +82,49 @@ class Fork(BaseOperation):
         outputs = []
 
         # Execute chain of operations (TODO: initialise new Pipeline instance to handle this?)
-        for i, op_chain in enumerate(self.operation_chains):
+        for i, operation in enumerate(self.fork_operations):
             value = copy.deepcopy(input_val)
-            for operation in op_chain:
-                with LogDuration(log, 'Running fork #{} operation: {}'.format(i, operation)):
-                    value = operation(value)
+            with LogDuration(log, 'Running fork #{} operation: {}'.format(i, operation)):
+                value = operation(value)
             outputs.append(value)
         return outputs
 
-    def __str__(self):
-        return 'Fork into chains: {}'.format('\n'.join('#{}: ({})'.format(i,
-                                                                          ','.join('({})'.format(str(op)) for op in op_chain))
-                                                       for i, op_chain in enumerate(self.operation_chains)))
+    def add_profile_data(self, profile_data, caller=None, add_self_data=True):
+        """
+        Force normally 'transparent' fork operations (e.g. THEN) to add their own profile data so each fork is bundled
+        :param profile_data:
+        :param caller:
+        :param bool add_self_data: Whether this operation wrapper should include its own profile stats, or be
+        'transparent'
+        :return:
+        """
+        profile_data = Operation.add_profile_data(self, profile_data, caller=caller,
+                                                  add_self_data=add_self_data)
+        for operation in self.wrapped_operations:
+            profile_data = operation.add_profile_data(profile_data, self if add_self_data else caller,
+                                                      add_self_data=True)
+        return profile_data
+
+    def add_to_graph(self, graph):
+        from pydot import Edge, Node
+        # Create Fork node
+        fork_node, fork_node = super().add_to_graph(graph)
+        for operation in self.fork_operations:
+            start_node, end_node = operation.add_to_graph(graph)
+            graph.add_edge(Edge(fork_node, start_node,
+                                ltail=fork_node.obj_dict['parent_graph'].get_name(),
+                                lhead=start_node.obj_dict['parent_graph'].get_name()))
+        return fork_node, None
+
+    def short_description(self):
+        return 'Fork into {} chains'.format(len(self.fork_operations))
+
+    def description(self):
+        return 'Fork into {} chains: {}'.format(len(self.fork_operations), '\n'.join('#{}: ({})'.format(i, operation)
+                                                       for i, operation in enumerate(self.fork_operations)))
 
 
-class Value(BaseOperation):
+class Value(Operation):
     """
     Allows specifying static values (strings, numbers, etc) which can be used in arithmetic or comparison with other operations
     Required when using 'in' operator
@@ -109,18 +139,18 @@ class Value(BaseOperation):
     def __init__(self, value):
         self.value = value
 
-    def __call__(self, *args, **kwargs):
+    def action(self, *args, **kwargs):
         # Return static value regardless of of input
         return self.value
 
-    def __str__(self):
+    def description(self):
         # if isinstance(self.value, str):
         return 'Value: "{}"'.format(self.value)
         # else:
         #     return str(self.value)
 
 
-class ContextValue(BaseOperation):
+class ContextValue(Operation):
     """
     Provides value from transform context dictionary
     Configure with callable that takes the context dictionary and returns desired value
@@ -139,14 +169,14 @@ class ContextValue(BaseOperation):
         """
         self.key_name = key_name
 
-    def __call__(self, *args, **kwargs):
+    def action(self, *args, **kwargs):
         return transform_context[self.key_name]
 
-    def __str__(self):
+    def description(self):
         return 'Transform Context value: "{}"'.format(self.key_name)
 
 
-class Lambda(BaseOperation):
+class Lambda(Operation):
     """
     Allows for custom simple transform logic
     Can optionally provide type translation for compatability validation
@@ -160,27 +190,27 @@ class Lambda(BaseOperation):
         :param type_translation: Optionally provide type translation of custom function
         """
         self.func = func
-        self.description = description or func.__name__
+        self._description = description or func.__name__
         if type_translation:
             self.calling_translations = type_translation
 
-    def __call__(self, value):
+    def action(self, value):
         return self.func(value)
 
-    def __str__(self):
-        return self.description
+    def description(self):
+        return self._description
 
 
-class Collect(BaseOperation):
+class Collect(Operation):
     """
     Collects an iterable into a list of values
     """
 
-    def __call__(self, iterable):
+    def action(self, iterable):
         return tuple(iterable)
 
 
-class Iterate(BaseOperation):
+class Iterate(Operation):
     """
     Iterates over provided iterator and execute provided operation on each element
     Returns a generator of result of each item after being transformed by operation
@@ -192,12 +222,12 @@ class Iterate(BaseOperation):
         """
         self.operation = operation
 
-    def __call__(self, iterable):
+    def action(self, iterable):
         for item in iterable:
             yield self.operation(item)
 
 
-class Map(BaseOperation):
+class Map(Operation):
     """
     Provide mapping dictionary which will be used to translate values
     Can specify logic for what happens when lookup values are missing (raise error, pass through key, use default)
@@ -227,12 +257,20 @@ class Map(BaseOperation):
 
         self.mapping = mapping
 
-    def __call__(self, value):
+    def action(self, value):
         """Return mapped value"""
         return self.mapping[value]
 
-    def __str__(self):
+    def description(self):
         return 'Map values: {}'.format(self.mapping if len(self.mapping) < 6 else '<Large mapping table>')
+
+
+class Length(Operation):
+    """
+    Get length of input
+    """
+    def action(self, value):
+        return len(value)
 
 
 class DictWithDefault(dict):
@@ -266,7 +304,7 @@ class DictWithError(dict):
         raise KeyError('Key: "{}" is missing from mapping dictionary'.format(key))
 
 
-class GetAttr(BaseOperation):
+class GetAttr(Operation):
     """
     Return an attribute of input object
     """
@@ -281,11 +319,11 @@ class GetAttr(BaseOperation):
         self.default = default
         self.attr_name = attr_name
 
-    def __call__(self, obj):
+    def action(self, obj):
         if self.default == self.NOT_SPECIFIED:
             return getattr(obj, self.attr_name)
         else:
             return getattr(obj, self.attr_name, self.default)
 
-    def __str__(self):
+    def description(self):
         return 'Attribute: "{}"'.format(self.attr_name)

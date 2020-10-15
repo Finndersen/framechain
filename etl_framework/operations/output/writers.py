@@ -1,13 +1,13 @@
 """
 Operations for writing data to file
 """
-from etl_framework.operations import BaseOperation
+from etl_framework.operations import Operation
 import os, gzip, sys, logging
 
 log = logging.getLogger(__name__)
 
 
-class BaseFileWriter(BaseOperation):
+class BaseFileWriter(Operation):
     """
     Base class for a file writer, takes file content and writes to some destination
     File content can be binary or text, depending on output generator
@@ -23,7 +23,7 @@ class BaseFileWriter(BaseOperation):
         """
         self.output_path = output_path
 
-    def __call__(self, file_data, output_path=None):
+    def action(self, file_data, output_path=None):
         """
         Write file content to destination (can be for local filesytem, network filesystem, HDFS, String.IO buffer, etc)
         :return:
@@ -58,7 +58,7 @@ class BaseFileWriter(BaseOperation):
         """
         raise NotImplementedError()
 
-    def __str__(self):
+    def description(self):
         """
         Return string representation of output path
         :return:
@@ -79,7 +79,8 @@ class LocalFileWriter(BaseFileWriter):
 
         :param str output_path: output file path
         :param str newline: Newline character. Set to blank to avoid extra line terminators. Only valid for text data
-        :param bool compress: Whether to write file as compressed GZIP archive. Use None to infer
+        :param bool/int compress: Whether to write file as compressed GZIP archive. Use None to infer from output path.
+        Can provide a number (1-9) to set compression level
         If not specified, will infer from filename (True if ends in .gz)
         :param bool append: whether to append to output file
         :param bool overwrite: Whether to overwrite existing file
@@ -108,22 +109,27 @@ class LocalFileWriter(BaseFileWriter):
             mode = 'w'
             write_path = output_path + '.tmp'
 
+        newline = None
+
         if isinstance(file_data, str):
             mode += 't'
             newline = self.newline
         elif isinstance(file_data, (bytes, bytearray)):
             mode += 'b'
-            newline = None
         else:
             self.error(ValueError, 'Input data must be string or bytes')
 
         # Delete existing file if overwrite enabled
-        if self.overwrite and os.path.isfile(output_path):
-            os.remove(output_path)
+        if os.path.isfile(output_path):
+            if self.overwrite:
+                os.remove(output_path)
+            else:
+                raise FileExistsError('File already exists: {}'.format(output_path))
 
         # Write to temporary filename and rename when finished
         if self.compress:
-            file = gzip.open(write_path, mode=mode, newline=newline)
+            file = gzip.open(write_path, mode=mode, newline=newline,
+                             compresslevel=self.compress if isinstance(self.compress, int) else 9)
         else:
             file = open(write_path, mode=mode, newline=newline)
 
@@ -138,7 +144,7 @@ class LocalFileWriter(BaseFileWriter):
     def get_return_value(self, output_path):
         return output_path
 
-    def __str__(self):
+    def description(self):
         str = 'Write file'
         if self.output_path:
             str += ' at: {}'.format(self.output_path)
@@ -198,14 +204,14 @@ class HDFSFileSystemWriter(BaseFileWriter):
         if not self.client.status(output_path, strict=False):
             self.error(FileNotFoundError, 'Failed to write file on HDFS at: {}'.format(output_path))
 
-    def __str__(self):
+    def description(self):
         str = 'Write file to HDFS'
         if self.output_path:
             str += ' at {}:{}'.format(self.url, self.output_path)
         return str
 
 
-class STDOUTWriter(BaseOperation):
+class STDOUTWriter(Operation):
     """
     Write data to STDOUT
     Binary input will be written as binary output, text input as text output
@@ -213,11 +219,11 @@ class STDOUTWriter(BaseOperation):
 
     calling_translations = {'file_data': 'output'}
 
-    def __call__(self, data):
+    def action(self, data):
         if isinstance(data, bytes):
             sys.stdout.buffer.write(data)
         else:
             sys.stdout.write(data)
 
-    def __str__(self):
+    def description(self):
         return 'Write data to STDOUT'

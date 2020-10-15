@@ -1,4 +1,5 @@
 from etl_framework.operations.pandas.base import ColumnOperation
+import re
 
 
 class Replace(ColumnOperation):
@@ -13,12 +14,12 @@ class Replace(ColumnOperation):
         self.pattern = pattern
         self.replace = replace
 
-    def __call__(self, column):
+    def action(self, column):
         return column.str.replace(pat=self.pattern,
                                   repl=self.replace,
                                   regex=not isinstance(self.pattern, str))
 
-    def __str__(self):
+    def description(self):
         return 'Replace "{}" with "{}"'.format(self.pattern, self.replace)
 
 
@@ -27,7 +28,7 @@ class StripWhitespaces(ColumnOperation):
     Strip whitespaces from string column
     """
 
-    def __call__(self, column):
+    def action(self, column):
         return column.str.strip()
 
 
@@ -35,7 +36,7 @@ class StringLength(ColumnOperation):
     """
     Calaculate string length of column
     """
-    def __call__(self, value):
+    def action(self, value):
         """
 
         :param value: Either string column or scalar value
@@ -43,5 +44,51 @@ class StringLength(ColumnOperation):
         """
         return value.str.len()
 
-    def __str__(self):
+    def description(self):
         return 'len()'
+
+
+class RegexExtract(ColumnOperation):
+    """
+    Extract text from a string series using regex pattern, return a single series of extracted values
+    Pattern should have a single capture group
+    Will return NA for any values that do not match the regex
+    """
+    def __init__(self, pattern, **flags):
+        """
+
+        :param str pattern: Regex pattern to match on
+        :param flags: Extra flags for regex library
+        """
+        # Validate pattern has only one capture group
+        if re.compile(pattern).groups != 1:
+            raise ValueError('Regex pattern: "{}" should have only one capture group'.format(pattern))
+
+        self.flags = flags
+        self.pattern = pattern
+
+    def action(self, string_series):
+        return string_series.str.extract(self.pattern, expand=False, **self.flags)
+
+    def description(self):
+        return 'RegexExtract with pattern: "{}"'.format(self.pattern)
+
+
+class RegexFindall(ColumnOperation):
+    """
+    Apply re.findall() to string column, each result value will be a list of matches from the original string
+    """
+    def __init__(self, pattern, **flags):
+        """
+
+        :param str pattern: Regex pattern to match on
+        :param flags: Extra flags for regex library
+        """
+        self.flags = flags
+        self.pattern = pattern
+
+    def action(self, string_series):
+        return string_series.str.findall(self.pattern, **self.flags)
+
+    def description(self):
+        return 'RegexFindall with pattern: "{}"'.format(self.pattern)

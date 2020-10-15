@@ -16,7 +16,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
 
     def __init__(self, fields, delimiter=',', quoting=csv.QUOTE_MINIMAL, header=True, **read_csv_kwargs):
         """
-        :param tuple fields: List/tuple of CSVField(s)
+        :param tuple/list fields: List/tuple of CSVField(s)
         :param str delimiter: Delimeter character used for CSV reader
         :param quoting: Quoting setting for CSV reader
         :param bool header: Whether field headers are provided in file
@@ -24,9 +24,9 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         """
         # Validate fields contain column_id if file has no header
         if not header and not all(isinstance(field.column_id, int) for field in fields):
-            raise ETLConfigurationError('All field column_ids must be ints if header=False')
+            self.error(TypeError, 'All field column_ids must be ints if header=False')
         if header and not all(isinstance(field.column_id, str) for field in fields):
-            raise ETLConfigurationError('All field column_ids must be strings if header=True')
+            self.error(TypeError, 'All field column_ids must be strings if header=True')
 
         self.delimiter = delimiter
         self.quoting = quoting
@@ -62,7 +62,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         # Perform mandatory field validation
         for field in self.fields:
             if field.mandatory and dataframe[field.name].isnull().any():
-                raise MandatoryFieldError('Field: {} contains empty values'.format(field))
+                self.error(MandatoryFieldError, 'Field: {} contains empty values'.format(field))
 
         return dataframe
 
@@ -85,11 +85,34 @@ class CSVField(InputField):
         super().__init__(name, **kwargs)
 
 
-class IntegerField(IntegerFieldMixin, CSVField):
+class StringField(CSVField):
+    """
+    Field which converts values to String dtype
+    """
+    def __init__(self, name, **kwargs):
+        """
+
+        :param name:
+        :param kwargs:
+        """
+        super().__init__(name,
+                         dtype='str',
+                         **kwargs)
+
+class IntegerField(CSVField):
     """
     Field which converts values to Nullable Integer type
     """
-    pass
+    def __init__(self, name, large=False, **kwargs):
+        """
+
+        :param name:
+        :param bool large: Whether integer may be very large (greater than 2,147,483,647) (use 64-bit)
+        :param kwargs:
+        """
+        super().__init__(name,
+                         dtype='Int64' if large else 'Int32',
+                         **kwargs)
 
 
 class TimestampField(TimestampFieldMixin, CSVField):

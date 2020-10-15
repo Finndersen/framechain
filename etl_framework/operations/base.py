@@ -1,80 +1,22 @@
-from etl_framework.exceptions import ETLConfigurationError, UnsupportedOperatorError
-from etl_framework.utils import validate_callable
+from etl_framework.operations.types import TypeTranslations
+from etl_framework.utils import validate_callable, randomstring
 import pandas as pd
-import operator, logging
+import sys
+import operator, logging, time, marshal
 
 log = logging.getLogger(__name__)
 
 
-class TypeTranslations(object):
+class OperationError(Exception):
+    def __init__(self, operation, exc):
+        message = 'Exception occured during operation: {}\n{}: {}'.format(operation, type(exc).__name__, str(exc))
+        super().__init__(message)
+
+
+class OperationOperators(object):
     """
-    Class which holds base configurations and helper methods relating to type translations
+    Mixin to add operator overloading to allow operator chaining and numeric / binary / comparison operators
     """
-    TYPE_HIERARCHY = {
-        'dataframe': 3,
-        'column': 2,
-        'row': 2,
-        'value': 1
-    }
-
-    # Generic type translation and compatability
-    GENERIC_TYPE_TRANSLATIONS = {
-        'dataframe': 'dataframe',
-        'row': 'row',
-        'column': 'column',
-        'value': 'value',
-    }
-
-    @classmethod
-    def get_for_operation(cls, operation):
-        """
-        Get defined calling type translations of operation, or generic defaults if not specified
-        :param operation:
-        :return:
-        """
-        return getattr(operation, 'calling_translations', cls.GENERIC_TYPE_TRANSLATIONS)
-
-    @staticmethod
-    def check_operator_allowed(operation, operator_str):
-        """
-        Checks whether the provided operation is compatible with operators (must return column or value type)
-        :param operation:
-        :return:
-        """
-        output_types = set(getattr(operation, 'calling_translations', {'placeholder': 'column'}).values())
-        if not output_types.intersection({'column', 'value'}):
-            raise UnsupportedOperatorError('Operation: {} does not support operator: {}'.format(operation, operator_str))
-
-
-class BaseOperation(object):
-    """
-    Base operation class. An operation is anything that performs some kind of action in the ETL pipeline
-    Implements operator overloading to allow operators to be applied to operation definitions
-    The same operator will be applied to the output of each operation when it is called
-    Supports:
-     - operations to be chained together (output of first goes to input of second) (>>)
-     - Perform bitwise operator (vector or scalar) on output of two operations (&, |, ~)
-     - Perform arithmetic (vector or scalar) on output of two operations (+, -, *, /)
-     - Comparison (>, <, <=, >=, ==)
-
-    """
-    # Mapping of valid input types to valid output types (for when this class is called)
-    # calling_translations = None
-
-    def error(self, exc_type, message):
-        """
-        Raise error for this operation
-        :param exc_type:
-        :param message:
-        :return:
-        """
-        raise exc_type('{} operation: {}'.format(type(self).__name__, message))
-
-    def __call__(self, *args, **kwargs):
-        raise NotImplementedError()
-
-    def __str__(self):
-        return type(self).__name__
 
     # CHAINING
     def __rshift__(self, other):
@@ -177,7 +119,251 @@ class BaseOperation(object):
         return OperationsWithOperator(self, other, '!=')
 
 
-class OperationsWithOperator(BaseOperation):
+class BaseOperation(object):
+    """
+    Base operation class. An operation is anything that performs some kind of action in the ETL pipeline
+    Implements operator overloading to allow operators to be applied to operation definitions
+    The same operator will be applied to the output of each operation when it is called
+    Supports:
+     - operations to be chained together (output of first goes to input of second) (>>)
+     - Perform bitwise operator (vector or scalar) on output of two operations (&, |, ~)
+     - Perform arithmetic (vector or scalar) on output of two operations (+, -, *, /)
+     - Comparison (>, <, <=, >=, ==)
+
+    """
+    # Mapping of valid input types to valid output types (for when this class is called)
+    # calling_translations = None
+    call_count = 0
+    _culumative_time = 0
+
+    def error(self, exc_type, message):
+        """
+        Raise error for this operation
+        :param exc_type:
+        :param message:
+        :return:
+        """
+        raise exc_type('{} operation: {}'.format(type(self).__name__, message))
+
+    def __call__(self, *args, **kwargs):
+        # Record execution time, etc..
+        try:
+            start_time = time.perf_counter()
+            result = self.action(*args, **kwargs)
+            self.call_count += 1
+            self._culumative_time += time.perf_counter() - start_time
+            return result
+        except Exception as exc:
+            exc_result = self.handle_exception(exc, *args, **kwargs)
+            # Re-raise exception with operation details if not handled
+            if exc_result is None:
+                if isinstance(exc, OperationError):
+                    raise
+                else:
+                    raise OperationError(self, exc).with_traceback(sys.exc_info()[2])
+            else:
+                return exc_result
+
+    def action(self, *args, **kwargs):
+        """
+        Perform action of operation
+        :param args:
+        :param kwargs:
+        :return:
+        """
+        raise NotImplementedError()
+
+    def profile_snakeviz(self, input_val):
+        """
+        Run operation and display profile data with Snakeviz (in Jupyter Notebook)
+        :param input_val:
+        :return:
+        """
+        from snakeviz.ipymagic import open_snakeviz_and_display_in_notebook
+        self.clear_profile_stats()
+        result = self(input_val)
+
+        profile_data = self.get_profile_data()
+        with open('pstat_data', 'wb') as f:
+            marshal.dump(profile_data, f)
+
+        sv = open_snakeviz_and_display_in_notebook('pstat_data')
+        time.sleep(2)
+        sv.terminate()
+        return result
+
+    def get_profile_data(self):
+        profile_data = {}
+        self.add_profile_data(profile_data)
+        return profile_data
+
+    def add_profile_data(self, profile_data, caller=None, add_self_data=True):
+        if add_self_data:
+            node_id = self.pstat_id
+            node_stats = self.get_execution_stats()
+            # Dont add to profile stats if it is not called
+            if not node_stats[0]:
+                return
+
+            if node_id in profile_data:
+                # Add to existing profile data for this operation (can be multiple instances of same operation)
+                if caller:
+                    profile_data[node_id][4][caller.pstat_id] = caller.get_execution_stats()
+                for i in range(4):
+                    profile_data[node_id][i] += node_stats[i]
+            else:
+                # Create new entry
+                caller_dict = {caller.pstat_id: caller.get_execution_stats()} if caller else {}
+                profile_data[node_id] = node_stats + [caller_dict]
+
+        return profile_data
+
+    def get_execution_stats(self):
+        """
+        Get execution stats for use in profiling. List with elements:
+        [0] = The number of times this function was called, not counting direct or indirect recursion,
+        [1] = Number of times this function appears on the stack, minus one
+        [2] = Total time spent internal to this function
+        [3] = Cumulative time that this function was present on the stack.  In
+              non-recursive functions, this is the total execution time from start
+              to finish of each invocation of a function, including time spent in
+              all subfunctions.
+
+        :return:
+        """
+        return [self.call_count, self.call_count, self.get_execute_time(), self.get_culumative_time()]
+
+    def get_culumative_time(self):
+        """
+        Get total execution time of this operation (including wrapped sub-operations)
+        :return:
+        """
+        return self._culumative_time
+
+    def get_execute_time(self):
+        """
+        Get of just this operation (not including any wrapped sub-operations)
+        :return:
+        """
+        return self._culumative_time
+
+    @property
+    def pstat_id(self):
+        """
+        Get operation ID for profiling, in format:
+        (module_name, line_number, function_name)
+        :return:
+        """
+        desc = self.description()
+        if len(desc) > 180:
+            desc = self.short_description()
+        return ('', id(self), desc)
+
+    def clear_profile_stats(self):
+        self._culumative_time = 0
+        self.call_count = 0
+
+    def show_graph(self):
+        from pydot import Dot
+        from IPython.display import Image, display
+        graph = Dot(graph_name="G", compound='true')
+        start_node, end_node = self.add_to_graph(graph)
+        plt = Image(graph.create_png())
+        display(plt)
+
+    def add_to_graph(self, graph):
+        """
+        Add operation as node(s) to graph
+        Return start and end node added (can be multiple nodes for compound operations)
+        :param graph:
+        :return:
+        """
+        from pydot import Node
+        # Use random string as node name (so each operation is unique)
+        node = Node(name=randomstring(10), label=self.short_description())
+        graph.add_node(node)
+        return node, node
+
+    def handle_exception(self, exc, *args, **kawrgs):
+        """
+        Handle exception raised during action().
+        Allows 'ask forgiveness not permission' style implementation in action() for greater performance
+        Can be used to provide more meaningful context-specific error messages, or logging
+        Any non-None return value will be used as operation return value
+        :param exc:
+        :return:
+        """
+        pass
+
+    def short_description(self):
+        """
+        Shorter description of operation, useful for simplifying description of compound operations which
+        can get unweildy
+        :return:
+        """
+        return self.description()
+
+    def description(self):
+        return type(self).__name__
+
+    def __str__(self):
+        return self.description()
+
+
+class Operation(BaseOperation, OperationOperators):
+    """
+    Base class for operations which are chainable and support operator overloading
+    """
+    pass
+
+
+class OperatorWrapperMixin(BaseOperation):
+    """
+    Mixin for operations which wrap other operations
+    Performs chaining of various operation methods and handles profiling of underlying operations
+    """
+    def __init__(self, wrapped_operations):
+        """
+
+        :param list wrapped_operations: List of operations which are encapsulated within (called by) this one
+        """
+        self.wrapped_operations = wrapped_operations
+
+    def add_profile_data(self, profile_data, caller=None, add_self_data=True):
+        """
+
+        :param profile_data:
+        :param caller:
+        :param bool add_self_data: Whether this operation wrapper should include its own profile stats, or be
+        'transparent'
+        :return:
+        """
+        profile_data = super().add_profile_data(profile_data, caller=caller, add_self_data=add_self_data)
+        for operation in self.wrapped_operations:
+            profile_data = operation.add_profile_data(profile_data, self if add_self_data else caller)
+        return profile_data
+
+    def get_execute_time(self):
+        tottime = self.get_culumative_time()
+        for operation in self.wrapped_operations:
+            tottime -= operation.get_culumative_time()
+        return tottime
+
+    def clear_profile_stats(self):
+        super().clear_profile_stats()
+        for operation in self.wrapped_operations:
+            operation.clear_profile_stats()
+
+
+class CompoundOperation(OperatorWrapperMixin, Operation):
+    """
+    Base class for operations which wrap or contain other operations.
+    Used to propogate method calls such as profiling down to encapsulated operations
+    """
+    pass
+
+
+class OperationsWithOperator(CompoundOperation):
     """
     Class used to define an operator (e.g. AND, OR, ADD, MINUS, MULTIPLY),
     and the operands to operate on (generally operations/activities)
@@ -208,12 +394,12 @@ class OperationsWithOperator(BaseOperation):
         :param op2: Second (right side) operation
         :param str operator_str: String representing operator
         """
-        # Store operands
         self.op1 = validate_callable(op1)
         self.op2 = validate_callable(op2)
         # Store operator string
         assert operator_str in self.OPERATORS, '{} is not a valid operator string'.format(operator_str)
         self.operator_str = operator_str
+        super().__init__([self.op1, self.op2])
         # Validate operation input types (both must have common valid input type)
         # TODO: Rework operation type compatability
         # op1_translations = TypeTranslations.get_for_operation(op1)
@@ -231,11 +417,11 @@ class OperationsWithOperator(BaseOperation):
         #                                           key=lambda out_type: TypeTranslations.TYPE_HIERARCHY[out_type])
         #                              for in_type in valid_inputs}
 
-    def __call__(self, *args, **kwargs):
+    def action(self, *args, **kwargs):
         # Apply operator on output of two operands
         return self.OPERATORS[self.operator_str](self.op1(*args, **kwargs), self.op2(*args, **kwargs))
 
-    def __str__(self):
+    def description(self):
         return '({}) {} ({})'.format(self.op1, self.operator_str, self.op2)
 
     def _op_repr(self, op):
@@ -244,7 +430,7 @@ class OperationsWithOperator(BaseOperation):
         :param op:
         :return:
         """
-        if isinstance(op, BaseOperation):
+        if isinstance(op, Operation):
             return '({})'.format(op)
         elif isinstance(op, str):
             return '"{}"'.format(op)
@@ -252,7 +438,7 @@ class OperationsWithOperator(BaseOperation):
             return str(op)
 
 
-class SingleOperandOperator(BaseOperation):
+class SingleOperandOperator(CompoundOperation):
     """
     Base class for operators which operate on single operand (NOT, IN, SLICE)
     Inherits type translations from single contained operation
@@ -261,31 +447,32 @@ class SingleOperandOperator(BaseOperation):
 
     def __init__(self, op):
         TypeTranslations.check_operator_allowed(op, self.operator_str)
-        self.op = op
+        self.operation = op
         # Inherit type translations
-        self.calling_translations = TypeTranslations.get_for_operation(op)
+        # self.calling_translations = TypeTranslations.get_for_operation(op)
+        super().__init__([self.operation])
 
 
 class INVERT(SingleOperandOperator):
     """Invert operator"""
     operator_str = '~'
 
-    def __call__(self,*args, **kwargs):
-        return ~self.op(*args, **kwargs)
+    def action(self, *args, **kwargs):
+        return ~self.operation(*args, **kwargs)
 
-    def __str__(self):
-        return '~({})'.format(self.op)
+    def description(self):
+        return '~({})'.format(self.operation)
 
 
 class NEG(SingleOperandOperator):
     """Invert operator"""
     operator_str = '-'
 
-    def __call__(self,*args, **kwargs):
-        return -self.op(*args, **kwargs)
+    def action(self, *args, **kwargs):
+        return -self.operation(*args, **kwargs)
 
-    def __str__(self):
-        return '-({})'.format(self.op)
+    def description(self):
+        return '-({})'.format(self.operation)
 
 
 class SLICE(SingleOperandOperator):
@@ -312,8 +499,8 @@ class SLICE(SingleOperandOperator):
             self.result_type = None
         super().__init__(op)
 
-    def __call__(self, *args, **kwargs):
-        op_result = self.op(*args, **kwargs)
+    def action(self, *args, **kwargs):
+        op_result = self.operation(*args, **kwargs)
 
         if self.result_type == 'column':
             # Pandas vectorised string slice
@@ -328,7 +515,7 @@ class SLICE(SingleOperandOperator):
             else:
                 return op_result[self.key]
 
-    def __str__(self):
+    def description(self):
         if isinstance(self.key, slice):
             if self.key.step:
                 slice_str = '[{}:{}:{}]'.format(self.key.start or '', self.key.stop or '', self.key.step)
@@ -336,66 +523,142 @@ class SLICE(SingleOperandOperator):
                 slice_str = '[{}:{}]'.format(self.key.start or '', self.key.stop or '')
         else:
             slice_str = '[{}]'.format(self.key)
-        return '({}){}'.format(self.op, slice_str)
+        return '({}){}'.format(self.operation, slice_str)
 
 
-class THEN(BaseOperation):
+class THEN(CompoundOperation):
     """
     Holds operators to be chained together
     Also contains validation logic for checking compatability of chained operations
     (output types of op1 must be in op2 input types)
     """
     def __init__(self, op1, op2):
-        # TODO: Rework type compatability validation
-        # chained_translations = self.get_chained_calling_translations(op1, op2)
-        # # Two operations are not compatible for chaining
-        # if not chained_translations:
-        #     raise ETLConfigurationError('{} is not compatible to be chained with: {}'.format(op1, op2))
-        # self.calling_translations = chained_translations
-        # Store operations
-        self.op1 = op1
-        self.op2 = op2
+        """
 
-    def __call__(self, *args):
+        :param op1: First (left side) operation
+        :param op2: Second (right side) operation
+        """
+        self.op1 = validate_callable(op1)
+        self.op2 = validate_callable(op2)
+        super().__init__([self.op1, self.op2])
+
+    def action(self, *args):
         # Return chained output.
         return self.op2(self.op1(*args))
 
-    def get_chained_calling_translations(self, op1, op2):
-        """
-        Get chained type translation across two operations
-        If translations are not specified, assume operation has full compatability and does no translation
-        :param op1: operation whos input will be provided by this wrapping class
-        :param op2: operation whos input will be provided by op1
-        :return:
-        """
-        op1_translations = TypeTranslations.get_for_operation(op1)
-        op2_translations = TypeTranslations.get_for_operation(op2)
-        # Build chained translation
-        chained_translations = {op1_in: op2_translations[op1_out]
-                                for op1_in, op1_out in op1_translations.items()
-                                if op1_out in op2_translations}
-        return chained_translations
+    def add_to_graph(self, graph):
+        from pydot import Edge
+        start_node1, end_node1 = self.op1.add_to_graph(graph)
+        start_node2, end_node2 = self.op2.add_to_graph(graph)
+        graph.add_edge(Edge(end_node1, start_node2,
+                            ltail=end_node1.obj_dict['parent_graph'].get_name(),
+                            lhead=start_node2.obj_dict['parent_graph'].get_name()))
+        return start_node1, end_node2
 
-    def __str__(self):
+    def add_profile_data(self, profile_data, caller=None, add_self_data=False):
+        return super().add_profile_data(profile_data,
+                                        caller=caller,
+                                        # Add root-level caller if none provided
+                                        add_self_data=add_self_data or caller is None)
+
+    def short_description(self):
+        return 'Long chain of operations'
+
+    # def get_chained_calling_translations(self, op1, op2):
+    #     """
+    #     Get chained type translation across two operations
+    #     If translations are not specified, assume operation has full compatability and does no translation
+    #     :param op1: operation whos input will be provided by this wrapping class
+    #     :param op2: operation whos input will be provided by op1
+    #     :return:
+    #     """
+    #     op1_translations = TypeTranslations.get_for_operation(op1)
+    #     op2_translations = TypeTranslations.get_for_operation(op2)
+    #     # Build chained translation
+    #     chained_translations = {op1_in: op2_translations[op1_out]
+    #                             for op1_in, op1_out in op1_translations.items()
+    #                             if op1_out in op2_translations}
+    #     return chained_translations
+
+    def description(self):
         return '({}) -> ({})'.format(self.op1, self.op2)
 
 
-class ScalarOperation(BaseOperation):
+class UnchainableOperation(object):
     """
-    Operation that uses scalar logic to operate on one or more row values (when vectorisation is not possible)
-    Use Apply wrapper to step-down vector (Dataframe or Series) to Scalar (Row or value)
-
+    Mixin which disables chaining (operator overload) capability of operation
     """
-    calling_translations = {'value': 'value'}
+    # CHAINING
+    __rshift__ = property()
+    # INVERSION
+    __invert__ = property()
 
-    def __call__(self, *args, **kwargs):
-        """
+    # NEGATE
+    __neg__ = property()
 
-        :param args:
-        :param kwargs:
-        :return:
-        """
-        raise NotImplementedError()
+    # CONTAINS/IN
+    __contains__ = property()
+
+    # SLICING
+    __getitem__ = property()
+
+    # BITWISE
+    __and__ = property()
+
+    __rand__ = property()
+
+    __or__ = property()
+
+    __ror__ = property()
+
+    # ARITHMETIC
+    __add__ = property()
+
+    __radd__ = property()
+
+    __mul__ = property()
+
+    __rmul__ = property()
+
+    __pow__ = property()
+
+    __rpow__ = property()
+
+    __sub__ = property()
+
+    __rsub__ = property()
+
+    __truediv__ = property()
+
+    __rtruediv__ = property()
+
+    __floordiv__ = property()
+
+    __rfloordiv__ = property()
+
+    __mod__ = property()
+
+    __rmod__ = property()
+
+    # COMPARISON
+    __gt__ = property()
+
+    __ge__ = property()
+
+    __eq__ = property()
+
+    __lt__ = property()
+
+    __le__ = property()
+
+    __ne__ = property()
+
+
+class UncallableOperation(object):
+    """
+    Mixin to make operation not callable
+    """
+    __call__ = property()
 
 
 class WrappingTypeTranslatorMixin(object):

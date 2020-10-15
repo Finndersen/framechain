@@ -10,7 +10,7 @@ class ECGIFromLocationInformation(ColumnOperation):
     12-: eCGI (MCC + MNC + ECI)
     """
 
-    def __call__(self, uli_series):
+    def action(self, uli_series):
         mcc = uli_series[13:11:-1] + uli_series[15]  # 505
         mnc = uli_series[17:15:-1]  # 01
         eci = uli_series[18:]

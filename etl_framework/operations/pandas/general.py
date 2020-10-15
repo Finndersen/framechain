@@ -1,12 +1,11 @@
-from etl_framework.operations.base import BaseOperation
+from etl_framework.operations.base import Operation, CompoundOperation
 from etl_framework.operations.general import Map
 from etl_framework.exceptions import ETLConfigurationError
 import pandas as pd
-from etl_framework.operations.pandas.base import ColumnOperation
-from etl_framework.operations.wrappers import OperationWrapper
+from etl_framework.operations.pandas.base import ColumnOperation, ConditionallyAppliedOperation
 
 
-class Field(BaseOperation):
+class Field(Operation):
     """
     Operation used to select a column of a Dataframe or a field value of a Row
     """
@@ -24,14 +23,14 @@ class Field(BaseOperation):
             self.error(ETLConfigurationError, 'Field name must be string')
         self.field_name = field_name
 
-    def __call__(self, multiple_fields):
+    def action(self, multiple_fields):
         """
         :param multiple_fields: Dataframe or Row containing multiple fields
         return:
         """
         return multiple_fields[self.field_name]
 
-    def __str__(self):
+    def description(self):
         return 'Field: "{}"'.format(self.field_name)
 
 
@@ -47,16 +46,15 @@ class ColumnMap(Map, ColumnOperation):
         'column': 'column'
     }
 
-    def __call__(self, value):
+    def action(self, value):
         """Apply mapping to column or value"""
         return value.map(self.mapping)
 
 
-class Apply(OperationWrapper):
+class Apply(CompoundOperation):
     """
     Wrapper which translates input from vector to scalar in Column axis
     e.g. Dataframe - > rows or Series -> values
-    Also supports optional caching of transform output
     """
     wrapping_translations = {
         'dataframe': 'row',
@@ -68,7 +66,14 @@ class Apply(OperationWrapper):
         'column': 'column'
     }
 
-    def __call__(self, vector):
+    def __init__(self, operation):
+        """
+        :param operation: Operation to apply to each element of vector
+        """
+        self.operation = operation
+        super().__init__([self.operation])
+
+    def action(self, vector):
         """
         :param vector: Dataframe or Column (series)
         :return:
@@ -78,16 +83,18 @@ class Apply(OperationWrapper):
         elif isinstance(vector, pd.Series):
             return vector.apply(lambda value: self.operation(value))
         else:
-            self.error(ValueError, 'Input should be DataFrame or Series')
+            self.error(TypeError, 'Input should be DataFrame or Series')
 
-    def __str__(self):
+    def description(self):
         return 'Apply to each row: ({}) '.format(self.operation)
 
 
-class Mask(OperationWrapper):
+class Mask(ConditionallyAppliedOperation):
     """
     Masking wrapper which takes Dataframe or Column, applies conditional logic to produce mask,
     and passes masked content to wrapped operation, and then integrates result back into original input
+    It is possible to use operations to delete rows of a masked DF (e.g. using DeleteRows),
+    however it is not recommended and does not have good performance
     """
     wrapping_translations = calling_translations = {'column': 'column', 'dataframe': 'dataframe'}
 
@@ -97,13 +104,10 @@ class Mask(OperationWrapper):
         :param condition: Callable which takes Dataframe or column and returns boolean series mask
         :param operation: Operation to pass masked column to
         """
-        # Validate type compatability of condition
-        # if self.condition_input_type not in TypeTranslations.get_for_operation(condition):
-        #     self.error(ETLConfigurationError, 'Condition: {} is not compatible'.format(condition))
-        self.condition = condition
-        super().__init__(operation)
 
-    def __call__(self, df_or_column):
+        super().__init__(operation, condition=condition)
+
+    def action(self, df_or_column):
         # Get mask using condition
         mask = self.condition(df_or_column)
         if mask is not None and not pd.api.types.is_bool_dtype(mask):
@@ -114,20 +118,23 @@ class Mask(OperationWrapper):
         df_or_column.loc[mask] = transformed_values
 
         if isinstance(df_or_column, pd.DataFrame):
-            # Filter out any fully null rows in case DeleteRows operation was applied to masked content
-            df_or_column.dropna(how='all', inplace=True)
             # Add in any extra columns that may have been added to masked Dataframe
             for column_name in transformed_values.columns:
                 if column_name not in df_or_column.columns:
                     df_or_column.loc[mask, column_name] = transformed_values[column_name]
+            # Filter out any fully null rows in case DeleteRows operation was applied to masked content
+            df_or_column.dropna(how='all', inplace=True)
 
         return df_or_column
 
-    def __str__(self):
+    def description(self):
         return 'Mask with condition ({}) and apply ({})'.format(self.condition, self.operation)
 
+    def short_description(self):
+        return 'Apply operation with mask condition ({})'.format(self.condition)
 
-class ColumnOfValue(BaseOperation):
+
+class ColumnOfValue(Operation):
     """
     Returns a column/Series of equal constant values, with length equal to that of input DataFrame
     Provided value can be static or callable which returns a value (e.g. from ContextValue)
@@ -144,7 +151,7 @@ class ColumnOfValue(BaseOperation):
         """
         self.value = value
 
-    def __call__(self, vector):
+    def action(self, vector):
         """
 
         :param vector: Dataframe or Series
@@ -153,7 +160,7 @@ class ColumnOfValue(BaseOperation):
         repeated_value = self.value(vector) if callable(self.value) else self.value
         return pd.Series([repeated_value] * len(vector.index), index=vector.index)
 
-    def __str__(self):
+    def description(self):
         return 'Column with value: "{}"'.format(self.value)
 
 
@@ -168,7 +175,7 @@ class FillNA(ColumnOperation):
         """
         self.value = value
 
-    def __call__(self, column):
+    def action(self, column):
         """
 
         :param column: Dataframe or Series

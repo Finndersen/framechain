@@ -8,10 +8,10 @@ class StringToInteger(ColumnOperation):
     """
     changes_type = True
 
-    def __call__(self, column):
+    def action(self, column):
         return pd.to_numeric(column)
 
-    def __str__(self):
+    def description(self):
         return 'Convert to numeric'
 
 
@@ -26,10 +26,10 @@ class AsType(ColumnOperation):
         """
         self.to_type = to_type
 
-    def __call__(self, column):
+    def action(self, column):
         return column.astype(self.to_type)
 
-    def __str__(self):
+    def description(self):
         return 'Convert type to {}'.format(self.to_type)
 
 

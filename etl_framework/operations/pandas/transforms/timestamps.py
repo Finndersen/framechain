@@ -1,5 +1,5 @@
-from etl_framework.operations.base import BaseOperation
-from etl_framework.operations.pandas.base import DataframeOperation, ColumnOperation
+from etl_framework.operations.base import Operation
+from etl_framework.operations.pandas.base import ColumnOperation
 from etl_framework.exceptions import ConverterConfigurationError
 import pytz
 import pandas as pd
@@ -14,7 +14,8 @@ class StringColumnToDatetime(ColumnOperation):
     Converter to convert column of string values to datetime
     Runs as vector operation so should be faster than all other scalar methods
     Format does not need to be supplied if string is ISO format
-    ISO format timestamp strings will have much better performance
+    If timestamps have different timezones, output will be object array and ConvertColumnTimezone
+    with different_timezones=True can be used to convert all to desired timezone
     """
     changes_type = True
 
@@ -24,7 +25,7 @@ class StringColumnToDatetime(ColumnOperation):
         """
         self.format = format
 
-    def __call__(self, column):
+    def action(self, column):
         # Get Timestamp series from strings
         dt_series = pd.to_datetime(column, format=self.format, infer_datetime_format=True)
 
@@ -47,14 +48,14 @@ class ToTimedelta(ColumnOperation):
             self.error(ValueError, 'Invalid timedelta units: "{}". Choose from: {}'.format(units, self.VALID_UNITS))
         self.units=units
 
-    def __call__(self, int_column):
+    def action(self, int_column):
         return pd.to_timedelta(int_column, unit=self.units)
 
-    def __str__(self):
+    def description(self):
         return "Integer to timedelta with units: {}".format(self.units)
 
 
-class TimestampFromColumns(DataframeOperation):
+class TimestampFromColumns(Operation):
     """
     Construct Timestamp series using date and time components in Dataframe columns
     Looks for columns names:
@@ -66,7 +67,7 @@ class TimestampFromColumns(DataframeOperation):
             timestamp_components = ['year', 'month', 'day', 'hour', 'minute', 'second']
         self.timestamp_components = timestamp_components
 
-    def __call__(self, dataframe):
+    def action(self, dataframe):
         return pd.to_datetime(dataframe[self.timestamp_components])
 
 
@@ -86,20 +87,20 @@ class SetColumnTimezone(ColumnOperation):
         """
         self.timezone = timezone
 
-    def __call__(self, timestamp_column):
+    def action(self, timestamp_column):
         """
         :param timestamp_column: Timestamp type column or single value from one
         """
         return timestamp_column.dt.tz_localize(self.timezone)
 
-    def __str__(self):
+    def description(self):
         if self.timezone:
             return 'Set timezone to: {}'.format(self.timezone)
         else:
             return 'Remove timezone'
 
 
-class SetTimezone(BaseOperation):
+class SetTimezone(Operation):
     """
     Transform used to add timezone information to pandas.Timestamp value
     Can initialise with single timezone to apply to all values, or can use ArgumentMapper to provide different timezone
@@ -114,7 +115,7 @@ class SetTimezone(BaseOperation):
         """
         self.timezone = timezone
 
-    def __call__(self, timestamp, timezone=None):
+    def action(self, timestamp, timezone=None):
         """
         :param timestamp: pandas.Timestamp value
         """
@@ -127,7 +128,7 @@ class SetTimezone(BaseOperation):
 
         return timestamp.tz_localize(timezone)
 
-    def __str__(self):
+    def description(self):
         if self.timezone:
             return 'Set timezone to: {}'.format(self.timezone)
         else:
@@ -149,7 +150,7 @@ class ConvertColumnTimezone(ColumnOperation):
         self.timezone = pytz.timezone(timezone) if isinstance(timezone, str) else timezone
         self.different_timezones = different_timezones
 
-    def __call__(self, timestamp_column):
+    def action(self, timestamp_column):
         """
 
         :param timestamp_column: column (series) of pandas.Timestamp
@@ -167,11 +168,11 @@ class ConvertColumnTimezone(ColumnOperation):
             # All timestamps have same timezone, can use tz_convert directly
             return timestamp_column.dt.tz_convert(self.timezone)
 
-    def __str__(self):
+    def description(self):
         return 'Convert timezone to {}'.format(self.timezone)
 
 
-class ConvertTimezone(BaseOperation):
+class ConvertTimezone(Operation):
     """
     Perform timezone conversion for single Timestamp value which is already timezone-aware
     """
@@ -183,7 +184,7 @@ class ConvertTimezone(BaseOperation):
         """
         self.timezone = pytz.timezone(timezone) if isinstance(timezone, str) else timezone
 
-    def __call__(self, timestamp):
+    def action(self, timestamp):
         """
 
         :param timestamp: pandas.Timestamp value
@@ -192,27 +193,46 @@ class ConvertTimezone(BaseOperation):
         # Convert scalar value
         return timestamp.tz_convert(self.timezone)
 
-    def __str__(self):
+    def description(self):
         return 'Convert timezone to {}'.format(self.timezone)
 
 
-class DateTimeProperty(BaseOperation):
+class DateTimeProperty(ColumnOperation):
     """
     Used to access Datetime or Timedelta properties of Timestamp Series
     See https://pandas.pydata.org/pandas-docs/stable/reference/series.html#api-series-dt for list of properties
     """
-    def __init__(self, property_name, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, property_name):
         self.property_name = property_name
 
-    def __call__(self, value):
+    def action(self, value):
         """
 
-        :param value: Datetime or Timedelta Series, or Timestamp value
+        :param value: Datetime or Timedelta Series
         :return:
         """
         return getattr(value.dt, self.property_name)
 
+    def description(self):
+        return 'Get DateTime property: "{}"'.format(self.property_name)
+
+
+class DatetimeToString(ColumnOperation):
+    """
+    Format Timestamp series to String
+    """
+    def __init__(self, format='%Y-%m-%d %H:%M:%S'):
+        """
+
+        :param str format: Datetime format string
+        """
+        self.format = format
+
+    def action(self, series):
+        return series.dt.strftime(self.format)
+
+    def description(self):
+        return 'DatetimeToString format: "{}"'.format(self.format)
 
 # class DateAndTimeToDatetime(object):
 #     """
@@ -231,6 +251,4 @@ class DateTimeProperty(BaseOperation):
 #
 #     def __call__(self, date_column, time_column):
 #         return self.datetime_converter(date_column.astype(str) + ' ' + time_column.astype(str))
-#
-#
-#
+

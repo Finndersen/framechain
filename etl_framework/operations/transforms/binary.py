@@ -2,40 +2,40 @@
 Operations which do conversions to or from binary data (bytes)
 """
 from datetime import date, time
-from etl_framework.operations import ScalarOperation
+from etl_framework.operations import Operation
 
 
-class BytesToString(ScalarOperation):
+class BytesToString(Operation):
     """
     Decode byte value to string
     """
     def __init__(self, encoding="utf-8"):
         self.encoding = encoding
 
-    def __call__(self, byte_str):
+    def action(self, byte_str):
         return byte_str.decode(self.encoding)
 
 
-class StringToBytes(ScalarOperation):
+class StringToBytes(Operation):
     """
     Encode string value to Bytes
     """
     def __init__(self, encoding="utf-8"):
         self.encoding = encoding
 
-    def __call__(self, string):
+    def action(self, string):
         return string.encode(encoding=self.encoding)
 
 
-class BytesToBoolean(ScalarOperation):
+class BytesToBoolean(Operation):
     """
     Convert byte value to boolean.
     """
-    def __call__(self, byte):
+    def action(self, byte):
         return byte > b'\x00'
 
 
-class BytesToInteger(ScalarOperation):
+class BytesToInteger(Operation):
     """
     Convert bytes to integer
     """
@@ -43,11 +43,11 @@ class BytesToInteger(ScalarOperation):
         self.byteorder = byteorder
         self.signed = signed
 
-    def __call__(self, value):
+    def action(self, value):
         return int.from_bytes(value, byteorder=self.byteorder, signed=self.signed)
 
 
-class BytesToHexString(ScalarOperation):
+class BytesToHexString(Operation):
     """
     Convert bytes to BCD hex string
     Effectively gets binary representation of integer and breaks it into 4-bit blocks
@@ -61,7 +61,7 @@ class BytesToHexString(ScalarOperation):
         """
         self.hex_length = hex_length
 
-    def __call__(self, value):
+    def action(self, value):
         # Trim off '0x' from start of string
         hex_str = value.hex()
         # 0-pad hex string if required
@@ -71,7 +71,7 @@ class BytesToHexString(ScalarOperation):
         return hex_str
 
 
-class IntegerToBytes(ScalarOperation):
+class IntegerToBytes(Operation):
     """
     Convert integer value to bytes string
     """
@@ -82,17 +82,17 @@ class IntegerToBytes(ScalarOperation):
         """
         self.bytes_length = bytes_length
 
-    def __call__(self, int_value):
+    def action(self, int_value):
         return int_value.to_bytes(self.bytes_length, byteorder='big')
 
 
-class BinaryDurationToInt(ScalarOperation):
+class BinaryDurationToInt(Operation):
     """
     Convert duration in 3-byte binary format to single integer value.
     raw values should consist of 3 byte values, corresponding to duration in format hours, minutes and seconds
     Scalar version
     """
-    def __call__(self, byte_val):
+    def action(self, byte_val):
         return byte_val[0] * 3600 + byte_val[1] * 60 + byte_val[2]
 
 
@@ -101,7 +101,7 @@ class BinaryDurationToInt(ScalarOperation):
 #########################################
 
 
-class BytesToDate(ScalarOperation):
+class BytesToDate(Operation):
     """
     Convert date in binary format (YYMMDD) to python date object
     Input value should be byte string of length 3.
@@ -109,11 +109,11 @@ class BytesToDate(ScalarOperation):
     Byte 2: month
     BYte 3: Day
     """
-    def __call__(self, value):
+    def action(self, value):
         return date(2000 + value[0], value[1], value[2])
 
 
-class BytesToDateString(ScalarOperation):
+class BytesToDateString(Operation):
     """
     Convert date in binary format to date string in format YYYY-MM-DD
     Input value should be byte string of length 3.
@@ -122,11 +122,11 @@ class BytesToDateString(ScalarOperation):
     BYte 3: Day
     """
 
-    def __call__(self, value):
+    def action(self, value):
         return '{}-{:02}-{:02}'.format(2000 + value[0], value[1], value[2])
 
 
-class BytesToTime(ScalarOperation):
+class BytesToTime(Operation):
     """
     Convert time in binary format (HHMMSS) to python time object
     Input value should be byte string of length 3.
@@ -134,11 +134,11 @@ class BytesToTime(ScalarOperation):
     Byte 2: Minute
     BYte 3: Second
     """
-    def __call__(self, raw_value):
+    def action(self, raw_value):
         return time(raw_value[0], raw_value[1], raw_value[2])
 
 
-class BytesToTimeString(ScalarOperation):
+class BytesToTimeString(Operation):
     """
     Convert time in binary format to time string in format HH:MM:SS
     Input value should be byte string of length 3.
@@ -146,7 +146,7 @@ class BytesToTimeString(ScalarOperation):
     Byte 2: Minute
     BYte 3: Second
     """
-    def __call__(self, raw_value):
+    def action(self, raw_value):
         return '{:02}:{:02}:{:02}'.format(raw_value[0], raw_value[1], raw_value[2])
 
 

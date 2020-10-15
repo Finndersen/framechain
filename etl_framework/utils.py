@@ -2,6 +2,7 @@ import functools
 import logging, time
 # from .operations import Value
 from .exceptions import ETLConfigurationError
+import random, string
 
 
 class LogDuration(object):
@@ -93,3 +94,8 @@ class ConfigurableClass(object):
 
     def configuration_error(self, message):
         raise ETLConfigurationError('{}: {}'.format(type(self).__name__, message))
+
+
+def randomstring(length):
+    letters = string.ascii_lowercase
+    return ''.join(random.choice(letters) for i in range(length))

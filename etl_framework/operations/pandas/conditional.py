@@ -4,11 +4,11 @@ Operations which perform a conditional check and return a boolean Series column
 import pandas as pd
 
 from etl_framework.exceptions import ETLConfigurationError
-from etl_framework.operations import BaseOperation
+from etl_framework.operations import Operation
 from etl_framework.operations.pandas.base import ColumnOperation
 
 
-class ValueIn(ColumnOperation):
+class IsIn(ColumnOperation):
     """
     Condition to select rows with column values in specified collection
     Input: Series
@@ -25,10 +25,10 @@ class ValueIn(ColumnOperation):
         """
         self.equate_values = values
 
-    def __call__(self, column):
+    def action(self, column):
         return column.isin(self.equate_values)
 
-    def __str__(self):
+    def description(self):
         return ' values in {}'.format(self.equate_values)
 
 
@@ -37,10 +37,10 @@ class IsNull(ColumnOperation):
     Select rows which are NA (None or np.NaN)
     """
 
-    def __call__(self, column):
+    def action(self, column):
         return column.isna()
 
-    def __str__(self):
+    def description(self):
         return ' is Null'
 
 
@@ -54,10 +54,10 @@ class StringContains(ColumnOperation):
         :param str pattern: search pattern
         :param bool regex: Whether pattern is regex
         """
-        self.pattern =  pattern
+        self.pattern = pattern
         self.regex = regex
 
-    def __call__(self, value):
+    def action(self, value):
         return value.str.contains(self.pattern, regex=self.regex)
 
 
@@ -65,11 +65,11 @@ class IsNumeric(ColumnOperation):
     """
     Test whether string column values are numeric
     """
-    def __call__(self, value):
+    def action(self, value):
         return value.str.isnumeric()
 
 
-class FieldExists(BaseOperation):
+class FieldExists(Operation):
     """
     Check whether column exists in DataFrame
     """
@@ -83,7 +83,7 @@ class FieldExists(BaseOperation):
             self.error(ETLConfigurationError, 'Field name must be string')
         self.field_name = field_name
 
-    def __call__(self, multiple_fields):
+    def action(self, multiple_fields):
         """
         :param multiple_fields: Dataframe or Row containing multiple fields
         return:
@@ -96,5 +96,5 @@ class FieldExists(BaseOperation):
         else:
             self.error(ValueError, 'Expected Series or Dataframe, not "{}"'.format(multiple_fields))
 
-    def __str__(self):
+    def description(self):
         return 'Field "{}" exists'.format(self.field_name)

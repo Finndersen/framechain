@@ -8,6 +8,7 @@ log = logging.getLogger(__name__)
 class CSVOutputGenerator(BaseDataframeExporter):
     """
     Basic CSV output generator to generate CSV file content as text string
+    Can then use LocalFileWriter to write result to file
     """
 
     calling_translations = {'dataframe': 'file_data'}
@@ -17,7 +18,7 @@ class CSVOutputGenerator(BaseDataframeExporter):
         """
         :param sequence columns: sequence of field names to write. Will use all if not specified
         :param str delimiter: field delimiter character
-        :param bool or list of str header: Whether to write field names, or aliases for field names
+        :param bool/list of str header: Whether to write field names, or aliases for field names
         :param str line_terminator: line terminator string
         :param str float_format: Optional formatting string for float values
         :param dict writer_kwargs: extra arguments to provide to pandas.to_csv()
@@ -42,5 +43,5 @@ class CSVOutputGenerator(BaseDataframeExporter):
                          **self.writer_kwargs)
         return buffer.getvalue()
 
-    def __str__(self):
+    def description(self):
         return 'Convert Dataframe to CSV string'

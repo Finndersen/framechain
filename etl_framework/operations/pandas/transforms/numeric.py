@@ -1,4 +1,5 @@
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 from etl_framework.operations import If
 from .basic import AsType
 from etl_framework.operations.pandas.base import ColumnOperation
@@ -7,7 +8,7 @@ import numpy as np
 
 class Floor(ColumnOperation):
     """ Floor numeric values (round down)"""
-    def __call__(self, value):
+    def action(self, value):
         return np.floor(value)
 
 
@@ -25,7 +26,7 @@ class ToNumeric(ColumnOperation):
         """
         self.downcast = downcast
 
-    def __call__(self, column):
+    def action(self, column):
         return pd.to_numeric(column, downcast=self.downcast)
 
 
@@ -39,11 +40,16 @@ class ToInteger(ColumnOperation):
     """
     changes_type = True
 
-    def __init__(self, int_size=32):
-        self.converter = If(lambda s: not s.isnull().all(),
-                            If(lambda s: 'float' in str(s.dtype),
-                               AsType('Int{}'.format(int_size)),                    # Float with Nulls Nullable integer
-                               ToNumeric() >> AsType('Int{}'.format(int_size))))    # Str or other to nullable integer
+    def __init__(self, large=False):
+        """
 
-    def __call__(self, column):
+        :param bool large: Whether to convert to 64 bit integer (True) or 32 bit (False)
+        """
+        int_type = 'Int64' if large else 'Int32'
+        self.converter = If(lambda s: not s.isnull().all(),
+                            If(lambda s: is_numeric_dtype(s.dtype),
+                               AsType(int_type),                    # Float or other numeric to nullable int
+                               ToNumeric() >> AsType(int_type)))    # First convert non-numeric to numeric
+
+    def action(self, column):
         return self.converter(column)

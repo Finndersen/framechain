@@ -1,21 +1,20 @@
-from etl_framework.operations import BaseOperation
+from etl_framework.operations import Operation, CompoundOperation
+from etl_framework.utils import validate_callable, randomstring
 
 
-class DataframeOperation(BaseOperation):
+class DataframeOperation(Operation):
     """
-    Base class for operations that take entire dataframe and return single Series
+    Abstract base class for a primary pandas ETL operation (highest level)
+    A configurable callable which takes DataFrame,  performs some kind of processing, and returns DataFrame
+    Are chainable but do not support other operators
     """
-    calling_translations = {'dataframe': 'column'}
+    calling_translations = {'dataframe': 'dataframe'}
 
-    def __call__(self, dataframe):
-        """
-        Take dataframe and return series
-        :return: boolen series
-        """
+    def action(self, dataframe):
         raise NotImplementedError()
 
 
-class ColumnOperation(BaseOperation):
+class ColumnOperation(Operation):
     """
     Base Class for operations that operate on one or more columns to perform vectorised condition logic and return single Series
     Could be transforms, conditionals or converters
@@ -26,9 +25,36 @@ class ColumnOperation(BaseOperation):
     # Whether the operation can change the DTYPE of the column. Used by ConvertField to decide whether to apply condition
     changes_type = False
 
-    def __call__(self, *args, **kwargs):
+    def action(self, *args, **kwargs):
         """
         Take one or more columns or scalar values
         :return: series
         """
         raise NotImplementedError()
+
+
+class ConditionallyAppliedOperation(CompoundOperation):
+    """
+    Base class for transform constructors which take an operation and apply it to a masked subset of the input
+    dataframe using a provided conditional operation
+    """
+    def __init__(self, operation, condition=None):
+        """
+
+        :param Operation operation: Operation to apply
+        :param Operation condition: will be provided input dataframe, and return boolean series mask which determines
+        which rows 'operation' will be applied to (optional)
+        """
+        # self.validate_wrapped_operation_compatability(operation)
+        self.operation = validate_callable(operation)
+        self.condition = validate_callable(condition, wrap_scalar=False)
+        wrapped_operations = [self.operation, self.condition] if self.condition else [self.operation]
+        super().__init__(wrapped_operations)
+
+    def add_to_graph(self, graph):
+        # Create Subgraph/cluster to contain wrapped operation
+        from pydot import Subgraph, Cluster
+        subgraph = Cluster(graph_name=randomstring(10), label=self.short_description())
+        start_node, end_node = self.operation.add_to_graph(subgraph)
+        graph.add_subgraph(subgraph)
+        return start_node, end_node

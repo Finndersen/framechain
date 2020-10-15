@@ -1,10 +1,10 @@
-from etl_framework.operations.base import BaseOperation
+from etl_framework.operations.base import Operation
 from etl_framework.exceptions import MissingFieldError
 import logging
 
 log = logging.getLogger(__name__)
 
-class BaseDataframeExporter(BaseOperation):
+class BaseDataframeExporter(Operation):
     """
     Base class for operation which takes dataframe and converts or exports to some kind of output format
     """
@@ -18,7 +18,7 @@ class BaseDataframeExporter(BaseOperation):
         self.create_for_empty = create_for_empty
         self.columns = columns
 
-    def __call__(self, dataframe):
+    def action(self, dataframe):
         # Return nothing if dataframe is empty
         if dataframe.empty and not self.create_for_empty:
             log.debug('DataFrame is empty, not creating any output')

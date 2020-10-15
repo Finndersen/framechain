@@ -1,7 +1,7 @@
-from etl_framework.operations import ScalarOperation
+from etl_framework.operations import Operation
 
 
-class IntToHexString(ScalarOperation):
+class IntToHexString(Operation):
     """
     Convert integer to BCD hex string
     Effectively gets binary representation of integer and breaks it into 4-bit blocks
@@ -14,7 +14,7 @@ class IntToHexString(ScalarOperation):
         """
         self.hex_length = hex_length
 
-    def __call__(self, value):
+    def action(self, value):
         # Trim off '0x' from start of string
         hex_str = hex(value)[2:]
         # 0-pad hex string if required

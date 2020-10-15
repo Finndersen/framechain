@@ -1,7 +1,7 @@
-from etl_framework.operations import BaseOperation
+from etl_framework.operations import Operation
 import re
 
-class StringContains(BaseOperation):
+class StringContains(Operation):
     """
     Test whether string value contains pattern or regex
     """
@@ -14,16 +14,16 @@ class StringContains(BaseOperation):
         self.pattern = re.compile(pattern) if regex else pattern
         self.regex = regex
 
-    def __call__(self, value):
+    def action(self, value):
         if self.regex:
             return self.pattern.search(value)
         else:
             return self.pattern in value
 
 
-class StringIsNumeric(BaseOperation):
+class StringIsNumeric(Operation):
     """
     Test whether string value is numeric
     """
-    def __call__(self, value):
+    def action(self, value):
         return value.isnumeric()
