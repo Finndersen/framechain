@@ -4,6 +4,42 @@ import logging
 log = logging.getLogger(__name__)
 
 
+class SkipRecordError(Exception):
+    """
+    Exception for skipping entire root-level ASN1 record
+    """
+    pass
+
+
+class ASN1Node(object):
+    """
+    Object to represent ASN1 node
+    """
+    __slots__ = ('constructed', 'tag_number', 'id', 'start_pos', 'value_pos', 'end_pos', 'parent', 'depth')
+
+    def __init__(self, tag_number, constructed, start_pos, tag_len, value_len, indefinite, parent):
+        """
+
+        :param int tag_number: ASN tag number of node
+        :param bool constructed: Whether node is constructed (True) or primitive (False)
+        :param int start_pos: Start position of node in data
+        :param int tag_len: Length of node tag data
+        :param int value_len: Length of node value data
+        :param bool indefinite: Whether node length is known (False) or unknown/indefinite (True)
+        :param ASN1Node parent: Parent node
+        """
+        self.tag_number = tag_number
+        self.constructed = constructed
+        self.start_pos = start_pos
+        self.parent = parent
+
+        self.value_pos = start_pos + tag_len
+        self.end_pos = 0 if indefinite else (start_pos + tag_len + value_len)
+        self.depth = parent.depth + 1 if parent else 0
+        # Calculate unique absolute ID of node (add 1 so it will always contribute something)
+        self.id = (tag_number if parent is None else (parent.id<<8) + tag_number) + 1
+
+
 class ASN1BERDecoder(object):
     def __init__(self, record_types, fields, header_trailer_lengths):
         """
@@ -23,8 +59,8 @@ class ASN1BERDecoder(object):
                     if record_type_name not in record_type_names:
                         raise exceptions.ETLConfigurationError('Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
 
-        self.asn_data = self.current_record_type = None
-        self.asn_index = self.current_depth = 0
+        self.asn_data = self.current_record_type = self.record_node = None
+        self.asn_index = 0
         self.header_trailer_lengths = header_trailer_lengths or {}
         self.recordtype_depth = self.get_recordtype_depth(record_types)
 
@@ -55,7 +91,7 @@ class ASN1BERDecoder(object):
         self.asn_data = asn_data
         self.asn_index = 0
         self.current_record_type = None
-        self.current_depth = 0
+        self.record_node = None
 
     def skip_until_asn_block(self):
         """
@@ -85,20 +121,20 @@ class ASN1BERDecoder(object):
         """
         Decode the ASN1 node starting at specified start_pos in the ASN1 data file.
         If no start_pos is specified, current asn_index is used
-        :param dict parent_node: Parent ASN1 node
+        :param ASN1Node parent_node: Parent ASN1 node
         :param int start_pos: Start position of ASN1 node in data file
-        :return: dict: Dictionary representing ASN1 node details. Has attributes start_pos, value_pos, end_pos, type, parent, id
+        :return: ASN1Node: Decoded ASN1Node object
         """
+
         if start_pos is None:
             start_pos = self.asn_index
-
         indefinite = False
 
         # ----------GET TAG CLASS AND TYPE----------------#
         # Get tag class (0 - Universal, 1- Application, 2 - Context-Specific, 3- Private)
         # tag_class = self.asn_data[start_pos] & 0xc0
         # Get tag type (0 - Primitive, 1 - Constructed)
-        constructed = self.asn_data[start_pos] & 0x20
+        constructed = bool(self.asn_data[start_pos] & 0x20)
         # ----------GET TAG NUMBER---------------------#
         tag_number = self.asn_data[start_pos] & 0x1f
         # Tag length keeps track of how many bytes haved been used while decoding tag data (can vary in case of long tag number or long length)
@@ -134,31 +170,25 @@ class ASN1BERDecoder(object):
             # Standard length
             value_len = len_byte & 0x7f
 
-        # Calculate absolute ID of node
-        id = (tag_number if parent_node is None else (parent_node['id']<<8) + tag_number) + 1
-        # Calculate end position
-        end_pos = 0 if indefinite else (start_pos + tag_len + value_len)
-        # --------------CONSTRUCT NODE------------------#
-        node = {
-            'constructed': constructed,
-            'id': id,
-            'start_pos': start_pos,
-            'value_pos': start_pos + tag_len,
-            'end_pos': end_pos,
-            'parent': parent_node
-        }
-        return node
+        return ASN1Node(tag_number, constructed, start_pos, tag_len, value_len, indefinite, parent_node)
 
-    def build_asn_record(self, root_node):
+    def build_asn_record(self, record_node=None):
         """
         Entry point for constructing record dictionary from provided root node (corresponds to full ASN1 record)
         Creates record in form of dictionary of field names and values
-        :param root_node:
+        Returns None if record is skipped (not target record type)
+        :param ASN1Node record_node: Root-level ASN1 node of record to decode
+        (get automatically from current data position if not specified)
         :return:
         """
+        self.record_node = record_node or self.decode_node(None)
         record_data = {}
         self.current_record_type = None
-        self.traverse_asn(root_node, record_data=record_data)
+        try:
+            self.traverse_asn(self.record_node, record_data=record_data)
+        except SkipRecordError:
+            return None
+
         return record_data
 
     def traverse_asn(self, node, record_data=None):
@@ -166,24 +196,24 @@ class ASN1BERDecoder(object):
         Traverse through an ASN1 node including all its children (if it is a constructed node)
         If current_record dictionary is supplied, it will look for fields defined in target_record_schema
         and populate current_record dictionary with the field value and field id as key
-        :param dict node:
+        :param ASN1Node node:
         :param dict record_data:
         :return:
         """
-        # log.debug('Found ASN1 node: {} at Depth: {} '.format(node, self.current_depth))
+        # log.debug('Found ASN1 node: {} '.format(node))
         # If record is being built, detect recordtype or add node value
         if record_data is not None:
-            # Skip irrelevant record type
-            if self.current_depth == self.recordtype_depth:
-                if node['id'] in self.target_recordtypes:
-                    self.current_record_type = self.target_recordtypes[node['id']]
-                else:
-                    self.skip_node(node)
-                    return
+
+            if node.depth == self.recordtype_depth:
+                if node.id in self.target_recordtypes:
+                    self.current_record_type = self.target_recordtypes[node.id]
+                else:  # Skip irrelevant record type
+                    self.skip_node(self.record_node)
+                    raise SkipRecordError()
 
             # Add field data to record if ID is a target field
-            elif (not node['constructed']) and (node['id'] in self.target_fields):
-                field = self.target_fields[node['id']]
+            elif (not node.constructed) and (node.id in self.target_fields):
+                field = self.target_fields[node.id]
                 field_value = field.convert_value(self.get_node_value(node))
                 # Handle duplicate field entries (fields within SEQUENCE OF)
                 if field.name in record_data:
@@ -191,33 +221,32 @@ class ASN1BERDecoder(object):
                 else:
                     record_data[field.name] = field_value
 
-        # Go through children of constructed node
-        if node['constructed']:
-            self.current_depth += 1
-            self.traverse_asn(self.first_child_node(node), record_data=record_data)
-            self.current_depth -= 1
-        # Update current ASN index. If node is indefinite constructed, its end_pos will have been set by traversing children
-        self.asn_index = node['end_pos']
-        # If node has parent (non-root node), continue to next child or update parent length
-        if node['parent']:
-            # Continue to next node if not last child
-            if not self.is_node_last_child(node):
-                self.traverse_asn(self.next_node(node), record_data=record_data)
-            # If node is last child and parent is indefinite length, update parent's length
-            elif node['parent']['end_pos'] == 0:
-                node['parent']['end_pos'] = node['end_pos'] + 2
+        # Traverse through children of constructed node
+        if node.constructed:
+            self.asn_index = node.value_pos
+            while True:
+                child_node = self.decode_node(node)
+                self.traverse_asn(child_node, record_data=record_data)
+                if self.is_node_last_child(child_node):
+                    # Update end position if node is indefinite length
+                    if node.end_pos == 0:
+                        node.end_pos = child_node.end_pos + 2
+                    break
+
+        # Update current ASN index.
+        self.asn_index = node.end_pos
 
     def is_node_last_child(self, node):
         """
         Check if node is last child of parent
-        :param dict node:
+        :param ASN1Node node:
         :return: bool
         """
         # If parent node is definite, can use length to determine if last child
-        if node['parent']['end_pos'] != 0:
-            return node['end_pos'] == node['parent']['end_pos']
+        if node.parent.end_pos != 0:
+            return node.end_pos == node.parent.end_pos
         # Parent node is indefinite, check for 2 blanks to detect end of parent
-        elif self.asn_data[node['end_pos']:node['end_pos'] + 2] == b'\x00\x00':
+        elif self.asn_data[node.end_pos:node.end_pos + 2] == b'\x00\x00':
             return True
         else:
             return False
@@ -225,11 +254,11 @@ class ASN1BERDecoder(object):
     def get_node_value(self, node):
         """
         Extract node data value from ASN data
-        :param dict node:
+        :param ASN1Node node:
         :return:
         """
-        if node['end_pos'] != 0:
-            return self.asn_data[node['value_pos']:node['end_pos']]
+        if node.end_pos != 0:
+            return self.asn_data[node.value_pos:node.end_pos]
         else:
             raise exceptions.ASNDecodeError('Cannot get data of node with no end position')
 
@@ -238,12 +267,13 @@ class ASN1BERDecoder(object):
         Update asn_index to end of current node
         If Node is definite (length known) then this is trivial.
         For indefinite length nodes, must traverse ASN structure
-        :param dict node:
+        :param ASN1Node node:
         :return:
         """
-        # Simple if node is primite or definite length constructed
-        if node['end_pos'] != 0:
-            self.asn_index = node['end_pos']
+        # print('Skipping node: {}'.format(node))
+        # Set ASN index to node end pos if node has definite length
+        if node.end_pos != 0:
+            self.asn_index = node.end_pos
         else:
             # Traverse through indefinite length constructed node to get next node
             self.traverse_asn(node)
@@ -251,20 +281,20 @@ class ASN1BERDecoder(object):
     def next_node(self, node):
         """
         Skip ASN1 index to end of current node and decode next node
-        :param dict node:
+        :param ASN1Node node:
         :return:
         """
         self.skip_node(node)
-        return self.decode_node(node['parent'])
+        return self.decode_node(node.parent)
 
     def first_child_node(self, node):
         """
         Get first child node of parent constructed node
-        :param dict node:
+        :param ASN1Node node:
         :return:
         """
-        if node['constructed']:
-            return self.decode_node(node, node['value_pos'])
+        if node.constructed:
+            return self.decode_node(node, node.value_pos)
         else:
             raise exceptions.ASNDecodeError('Cant get child node of primitive node')
 

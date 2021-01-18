@@ -49,8 +49,7 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
                 # Skip to start of next record
                 self.asn_decoder.skip_until_asn_block()
                 # Root node = entire record
-                root_node = self.asn_decoder.decode_node(None)
-                record = self.asn_decoder.build_asn_record(root_node)
+                record = self.asn_decoder.build_asn_record()
                 if record:
                     # Set recordtype name
                     record[self.RECORDTYPE_FIELD_NAME] = self.asn_decoder.current_record_type.name
