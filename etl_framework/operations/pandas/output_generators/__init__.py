@@ -1,5 +1,5 @@
 """
 Operations which take DataFrame an generate some kind of output
 """
-from .file import CSVOutputGenerator
+from .file import DataFrameToCSVExporter
 from .base import BaseDataframeExporter

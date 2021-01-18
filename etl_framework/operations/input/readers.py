@@ -77,10 +77,20 @@ class STDINReader(Operation):
 
 class Read(Operation):
     """
-    Reads content from a file object
+    Reads content from a file object and closes it after
     """
+    def __init__(self, close=True):
+        """
+
+        :param bool close: Whether to close file object after reading content
+        """
+        self.close = close
+
     def action(self, file_reader):
-        return file_reader.read()
+        content = file_reader.read()
+        if self.close:
+            file_reader.close()
+        return content
 
 
 class BytesReader(Operation):

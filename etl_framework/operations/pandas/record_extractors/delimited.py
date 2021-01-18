@@ -1,8 +1,10 @@
-import csv, io
+import csv
+
 import pandas as pd
-from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
-from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, IntegerFieldMixin, TimestampFieldMixin
-from etl_framework.operations.transforms import StringToDatetime
+
+from etl_framework.exceptions import MandatoryFieldError
+from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, \
+    TimestampFieldMixin
 
 
 class DelimitedRecordExtractor(BaseDataFrameGenerator):
@@ -89,6 +91,7 @@ class StringField(CSVField):
     """
     Field which converts values to String dtype
     """
+
     def __init__(self, name, **kwargs):
         """
 
@@ -99,10 +102,12 @@ class StringField(CSVField):
                          dtype='str',
                          **kwargs)
 
+
 class IntegerField(CSVField):
     """
     Field which converts values to Nullable Integer type
     """
+
     def __init__(self, name, large=False, **kwargs):
         """
 

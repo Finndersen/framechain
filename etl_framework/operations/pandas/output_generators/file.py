@@ -5,7 +5,7 @@ import logging, io
 log = logging.getLogger(__name__)
 
 
-class CSVOutputGenerator(BaseDataframeExporter):
+class DataFrameToCSVExporter(BaseDataframeExporter):
     """
     Basic CSV output generator to generate CSV file content as text string
     Can then use LocalFileWriter to write result to file
@@ -44,4 +44,4 @@ class CSVOutputGenerator(BaseDataframeExporter):
         return buffer.getvalue()
 
     def description(self):
-        return 'Convert Dataframe to CSV string'
+        return 'Convert Dataframe to CSV data'

@@ -44,6 +44,8 @@ class DropColumns(DataframeOperation):
         :param str columns: column names to drop
         :param bool error_if_missing: Whether to raise an error if any of specified columns are missing
         """
+        if not all(isinstance(column_name, (str, int)) for column_name in columns):
+            raise TypeError('Column labels must be string or integer')
         self.columns = list(columns)
         self.error_if_missing = error_if_missing
 

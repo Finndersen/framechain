@@ -1,13 +1,13 @@
+import pandas as pd
+import pytz
+
 from etl_framework.operations.base import Operation
 from etl_framework.operations.pandas.base import ColumnOperation
-from etl_framework.exceptions import ConverterConfigurationError
-import pytz
-import pandas as pd
-
-
 #############################################################################################################
 #   TIMESTAMP PARSING
 #############################################################################################################
+from etl_framework.utils import convert_timezone
+
 
 class StringColumnToDatetime(ColumnOperation):
     """
@@ -36,9 +36,9 @@ class ToTimedelta(ColumnOperation):
     """
     Convert a column of integers to Timedelta values
     """
-    VALID_UNITS = {'D','h','m','s','ms','us','ns'}
+    VALID_UNITS = {'D', 'h', 'm', 's', 'ms', 'us', 'ns'}
 
-    #{'Y', 'M', 'W', 'D', 'days', 'day', 'hours', 'hour', 'hr', 'h', 'm', 'minute',  'minutes', 'seconds', 'second', 'ms', 'milliseconds','microseconds',  'ns', 'nanoseconds', 'nano', 'nanos', 'nanosecond'}
+    # {'Y', 'M', 'W', 'D', 'days', 'day', 'hours', 'hour', 'hr', 'h', 'm', 'minute',  'minutes', 'seconds', 'second', 'ms', 'milliseconds','microseconds',  'ns', 'nanoseconds', 'nano', 'nanos', 'nanosecond'}
     def __init__(self, units='s'):
         """
 
@@ -46,7 +46,7 @@ class ToTimedelta(ColumnOperation):
         """
         if units not in self.VALID_UNITS:
             self.error(ValueError, 'Invalid timedelta units: "{}". Choose from: {}'.format(units, self.VALID_UNITS))
-        self.units=units
+        self.units = units
 
     def action(self, int_column):
         return pd.to_timedelta(int_column, unit=self.units)
@@ -62,6 +62,7 @@ class TimestampFromColumns(Operation):
     Required: year, month, day
     Optional:  hour, minute, second, millisecond, microsecond, nanosecond
     """
+
     def __init__(self, timestamp_components=None):
         if timestamp_components is None:
             timestamp_components = ['year', 'month', 'day', 'hour', 'minute', 'second']
@@ -76,16 +77,16 @@ class TimestampFromColumns(Operation):
 #############################################################################################################
 class SetColumnTimezone(ColumnOperation):
     """
-    Transform used to add timezone information to existing timestamp column
+    Add timezone information to existing naive timestamp column, or remove timezone info from aware timestamp column
     """
 
     def __init__(self, timezone):
         """
 
-        :param str, pytz.timezone, dateutil.tz.tzfile, None timezone: Timezone to apply to all values.
+        :param str, int, tzinfo, None timezone: Timezone to apply to all values.
         Use None to remove timezone information but not change timestamp
         """
-        self.timezone = timezone
+        self.timezone = convert_timezone(timezone, allow_none=True)
 
     def action(self, timestamp_column):
         """
@@ -110,10 +111,10 @@ class SetTimezone(Operation):
     def __init__(self, timezone=None):
         """
 
-        :param str, pytz.timezone, dateutil.tz.tzfile, False timezone: Timezone to apply to all values.
+        :param str, int, tzinfo, False timezone: Timezone to apply to all values.
         Use False to remove timezone information but not change timestamp
         """
-        self.timezone = timezone
+        self.timezone = convert_timezone(timezone, allow_none=True)
 
     def action(self, timestamp, timezone=None):
         """
@@ -122,7 +123,8 @@ class SetTimezone(Operation):
         timezone = timezone or self.timezone
 
         if timezone is None:
-            self.error(ValueError, 'Must provide timezone during initialisation or during execution with ArgumentMapper')
+            self.error(ValueError,
+                       'Must provide timezone during initialisation or during execution with ArgumentMapper')
         elif timezone is False:
             timezone = None
 
@@ -143,11 +145,11 @@ class ConvertColumnTimezone(ColumnOperation):
 
     def __init__(self, timezone='UTC', different_timezones=False):
         """
-        :param str, pytz.timezone, dateutil.tz.tzfile timezone: Timezone to convert to (default to UTC).
+        :param str, int, tzinfo, None timezone: Timezone to convert to (default to UTC).
             If None, will convert to UTC and remove timezone information
         :param bool different_timezones: Whether or not column contains timestamps in varying timezones
         """
-        self.timezone = pytz.timezone(timezone) if isinstance(timezone, str) else timezone
+        self.timezone = convert_timezone(timezone, allow_none=True)
         self.different_timezones = different_timezones
 
     def action(self, timestamp_column):
@@ -169,7 +171,10 @@ class ConvertColumnTimezone(ColumnOperation):
             return timestamp_column.dt.tz_convert(self.timezone)
 
     def description(self):
-        return 'Convert timezone to {}'.format(self.timezone)
+        if self.timezone is None:
+            return 'Convert timezone to UTC and remove tzinfo'
+        else:
+            return 'Convert timezone to {}'.format(self.timezone)
 
 
 class ConvertTimezone(Operation):
@@ -179,10 +184,10 @@ class ConvertTimezone(Operation):
 
     def __init__(self, timezone=pytz.utc):
         """
-        :param str, pytz.timezone, dateutil.tz.tzfile timezone: Timezone to convert to (default to UTC).
+        :param str, int, tzinfo, None timezone: Timezone to convert to (default to UTC).
         If None, will convert to UTC and remove timezone information
         """
-        self.timezone = pytz.timezone(timezone) if isinstance(timezone, str) else timezone
+        self.timezone = convert_timezone(timezone, allow_none=True)
 
     def action(self, timestamp):
         """
@@ -194,7 +199,10 @@ class ConvertTimezone(Operation):
         return timestamp.tz_convert(self.timezone)
 
     def description(self):
-        return 'Convert timezone to {}'.format(self.timezone)
+        if self.timezone is None:
+            return 'Convert timezone to UTC and remove tzinfo'
+        else:
+            return 'Convert timezone to {}'.format(self.timezone)
 
 
 class DateTimeProperty(ColumnOperation):
@@ -202,6 +210,7 @@ class DateTimeProperty(ColumnOperation):
     Used to access Datetime or Timedelta properties of Timestamp Series
     See https://pandas.pydata.org/pandas-docs/stable/reference/series.html#api-series-dt for list of properties
     """
+
     def __init__(self, property_name):
         self.property_name = property_name
 
@@ -221,6 +230,7 @@ class DatetimeToString(ColumnOperation):
     """
     Format Timestamp series to String
     """
+
     def __init__(self, format='%Y-%m-%d %H:%M:%S'):
         """
 
@@ -251,4 +261,3 @@ class DatetimeToString(ColumnOperation):
 #
 #     def __call__(self, date_column, time_column):
 #         return self.datetime_converter(date_column.astype(str) + ' ' + time_column.astype(str))
-

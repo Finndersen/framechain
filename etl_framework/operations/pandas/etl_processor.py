@@ -46,7 +46,7 @@ class ETLProcessor(ConfigurableClass):
                 dataframe = self._run_operations(etl_input, dataframe)
 
             # Create output/export from records
-            return self._get_result(etl_input, dataframe)
+            return self.create_output(etl_input, dataframe)
 
     def get_context(self, etl_input):
         """
@@ -110,7 +110,7 @@ class ETLProcessor(ConfigurableClass):
 
         return dataframe
 
-    def _get_result(self, etl_input, dataframe):
+    def create_output(self, etl_input, dataframe):
         """
         Create output from final dataframe
         :param etl_input: input provided to ETL processor

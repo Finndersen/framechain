@@ -1,6 +1,11 @@
 import functools
 import logging, time
 # from .operations import Value
+from datetime import timedelta, tzinfo
+
+import pytz
+from dateutil.tz.tz import tzoffset
+
 from .exceptions import ETLConfigurationError
 import random, string
 
@@ -99,3 +104,32 @@ class ConfigurableClass(object):
 def randomstring(length):
     letters = string.ascii_lowercase
     return ''.join(random.choice(letters) for i in range(length))
+
+
+def convert_timezone(timezone, allow_none=False):
+    """
+    Convert a timezone represented in various formats to tzinfo instance
+    Can be supplied as either:
+    - Timezone name as string
+    - UTC Offset in seconds as integer
+    - tzinfo instance
+    :param timezone:
+    :param allow_none: Whether None value is allowed to be provided and passed through
+    :return:
+    """
+    if timezone is None and allow_none:
+        return None
+
+    if isinstance(timezone, str):
+        return pytz.timezone(timezone)
+
+    if isinstance(timezone, int):
+        td = timedelta(seconds=timezone)
+
+        return tzoffset('UTC{}{}'.format('+' if timezone >= 0 else '-',
+                                         td if timezone >= 0 else -td), td)
+
+    if isinstance(timezone, tzinfo):
+        return timezone
+    else:
+        raise TypeError('Invalid timezone value: {}'.format(timezone))

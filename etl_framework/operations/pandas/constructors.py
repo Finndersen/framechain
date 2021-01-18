@@ -17,14 +17,14 @@ class SetColumn(ConditionallyAppliedOperation, WrappingTypeTranslatorMixin):
     """
     calling_translations = wrapping_translations = {'dataframe': 'dataframe'}
 
-    def __init__(self, output_field, transform, condition=None):
+    def __init__(self, field, transform, condition=None):
         """
-        :param str output_field: Name of column to populate output values in
+        :param str field: Name of column to populate output values in
         :param callable transform: Callable which either takes Dataframe or Series and returns Series. Can be result of chaining multiple Transform components togehter
         :param callable condition: callable which takes dataframe  and returns a boolean series mask. Ideally use sublcass of BaseVectorMask which can be chained with bitwise operators
         """
         super().__init__(transform, condition=condition)
-        self.output_field = output_field
+        self.field = field
         self.context = None
 
     def action(self, dataframe):
@@ -47,17 +47,17 @@ class SetColumn(ConditionallyAppliedOperation, WrappingTypeTranslatorMixin):
         # Add output Series back into original dataframe
         if mask is not None:
             # Raise error if datetime dtype of column has changed (can cause issues with timezone mismatch)
-            if (self.output_field in dataframe.columns
-                    and dataframe[self.output_field].dtype != output_series.dtype
-                    and is_datetime64_any_dtype(dataframe[self.output_field].dtype)):
+            if (self.field in dataframe.columns
+                    and dataframe[self.field].dtype != output_series.dtype
+                    and is_datetime64_any_dtype(dataframe[self.field].dtype)):
                 raise ChangedDataTypError(
                     'Operation: "{}" changes datetime datatype of masked values from "{}" to "{}", which may have undesired effect. '
                     'Removing any conditions may resolve the issue'.format(self.operation,
-                                                                           dataframe[self.output_field].dtype,
+                                                                           dataframe[self.field].dtype,
                                                                            output_series.dtype))
-            dataframe.loc[mask, self.output_field] = output_series
+            dataframe.loc[mask, self.field] = output_series
         else:
-            dataframe[self.output_field] = output_series
+            dataframe[self.field] = output_series
 
         return dataframe
 
@@ -68,13 +68,13 @@ class SetColumn(ConditionallyAppliedOperation, WrappingTypeTranslatorMixin):
         return dataframe[mask].copy() if mask is not None else dataframe
 
     def short_description(self):
-        rep = 'Set field "{}"'.format(self.output_field)
+        rep = 'Set field "{}"'.format(self.field)
         if self.condition:
             rep = rep + ' with condition: {}'.format(self.condition)
         return rep
 
     def description(self):
-        rep = 'Set field "{}" value using transform: {}'.format(self.output_field, self.operation)
+        rep = 'Set field "{}" value using transform: {}'.format(self.field, self.operation)
         if self.condition:
             rep = rep + ' with condition: {}'.format(self.condition)
         return rep
@@ -82,7 +82,7 @@ class SetColumn(ConditionallyAppliedOperation, WrappingTypeTranslatorMixin):
 
 class ConvertColumn(SetColumn):
     """
-    Apply a conversion operation to a single column
+    Apply a conversion operation to a single existing column
     """
     wrapping_translations = {'dataframe': 'column'}
 
@@ -113,14 +113,17 @@ class ConvertColumn(SetColumn):
         :param mask:
         :return: potentially masked Series of target field
         """
-        return dataframe.loc[mask, self.output_field].copy() if mask is not None else dataframe[self.output_field]
+        # Verify column already exists
+        if self.field not in dataframe.columns:
+            raise KeyError('Field: "{}" does not exist in DataFrame'.format(self.field))
+        return dataframe.loc[mask, self.field].copy() if mask is not None else dataframe[self.field]
 
     def short_description(self):
-        rep = 'Convert field "{}"'.format(self.output_field)
+        rep = 'Convert field "{}"'.format(self.field)
         if self.condition:
             rep = rep + ' with condition: {}'.format(self.condition)
         return rep
 
     def description(self):
-        return 'Convert field "{}" using transform: {} with condition: {}'.format(self.output_field, self.operation,
+        return 'Convert field "{}" using transform: {} with condition: {}'.format(self.field, self.operation,
                                                                                   self.condition)

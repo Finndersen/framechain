@@ -164,7 +164,8 @@ class ASN1BERDecoder(object):
     def traverse_asn(self, node, record_data=None):
         """
         Traverse through an ASN1 node including all its children (if it is a constructed node)
-        If current_record dictionary is supplied, it will look for fields defined in target_record_schema and populate current_record dictionary with the field value and field id as key
+        If current_record dictionary is supplied, it will look for fields defined in target_record_schema
+        and populate current_record dictionary with the field value and field id as key
         :param dict node:
         :param dict record_data:
         :return:
@@ -235,11 +236,11 @@ class ASN1BERDecoder(object):
     def skip_node(self, node):
         """
         Update asn_index to end of current node
-        If Node is definite (length known) then this is trivial. For indefinte length nodes, must traverse ASN structure
+        If Node is definite (length known) then this is trivial.
+        For indefinite length nodes, must traverse ASN structure
         :param dict node:
         :return:
         """
-        # print('Skipping node: {}'.format(node))
         # Simple if node is primite or definite length constructed
         if node['end_pos'] != 0:
             self.asn_index = node['end_pos']
