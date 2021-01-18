@@ -11,15 +11,17 @@ class ASN1BERField(InputField):
     """
     Class used to define a BER ASN1 field
     """
-    def __init__(self, name, asn_ids, **kwargs):
+    def __init__(self, name, asn_ids, aggregator=None, **kwargs):
         """
 
         :param str name: name of ASN1 field
         :param dict/str asn_ids: Either:
             - dictionary with keys of recordtype name, and values of str ASN1 id of field within recordtype
             - string of ASN1 Id of field (hyphen-seperated field IDs, applies to all record types)
+        :param ValueAggregator aggregator: Aggregator class for combining multiple field values
         """
         self.asn_ids = asn_ids
+        self.aggregator = aggregator
         super().__init__(name, **kwargs)
 
     def get_asn_id_for_record_type(self, record_type):
@@ -43,7 +45,9 @@ class ASN1BERField(InputField):
         :param new_value: New field value
         :return:
         """
-        raise ETLFieldError('{} does not support duplicate values in record'.format(self.name))
+        if self.aggregator is None:
+            raise ETLFieldError('{} encountered multiple values but has no aggregator defined'.format(self))
+        return self.aggregator(existing_value, new_value)
 
 
 class BooleanField(ASN1BERField):
@@ -58,9 +62,6 @@ class IntegerField(IntegerFieldMixin, ASN1BERField):
     Bytes to int64. Use for INTEGER or ENUMERATED ASN1 type
     """
     value_converter = BytesToInteger()
-
-    def aggregate_values(self, existing_value, new_value):
-        return existing_value + new_value
 
 
 class StringField(ASN1BERField):
@@ -186,3 +187,30 @@ class MSISDNField(ASN1BERField):
             raise ValidationError('Unexpected number format for MSISDN: {}'.format(value))
 
 
+class ValueAggregator(object):
+    """
+    Base class for aggregator which defines logic for combining multiple values of same field
+    (for when field occurs multiple times, e.g. in SEQUENCE OF)
+    Defines __call__() method which takes existing value and new value and returns aggregation
+    """
+    def __call__(self, existing_value, new_value):
+        raise NotImplementedError()
+
+
+class SumAggregator(ValueAggregator):
+    """
+    Aggregator which sums or concatenates values
+    """
+    def __call__(self, existing_value, new_value):
+        return existing_value + new_value
+
+
+class AppendAggregator(ValueAggregator):
+    """
+    Aggregator which creates sequence/list of values and appends new one
+    """
+    def __call__(self, existing_value, new_value):
+        if not isinstance(existing_value, list):
+            existing_value = [existing_value]
+        existing_value.append(new_value)
+        return existing_value
