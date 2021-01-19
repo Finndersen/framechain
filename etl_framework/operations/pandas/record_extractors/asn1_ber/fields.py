@@ -183,8 +183,8 @@ class MSISDNField(ASN1BERField):
 
     def validate_raw_value(self, value):
         # Ensure Extension Indication, Nature of Address and NPI is ISDN/Telephony international number
-        if value[0:2] != b'\x91\x16':
-            raise ValidationError('Unexpected number format for MSISDN: {}'.format(value))
+        if value[0:1] != b'\x91':
+            raise ValidationError('Expected ISDN/Telephony International Number but got: {}'.format(value))
 
 
 class ValueAggregator(object):
