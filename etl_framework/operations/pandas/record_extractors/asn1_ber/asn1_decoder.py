@@ -214,12 +214,7 @@ class ASN1BERDecoder(object):
             # Add field data to record if ID is a target field
             elif (not node.constructed) and (node.id in self.target_fields):
                 field = self.target_fields[node.id]
-                field_value = field.convert_value(self.get_node_value(node))
-                # Handle duplicate field entries (fields within SEQUENCE OF)
-                if field.name in record_data:
-                    record_data[field.name] = field.aggregate_values(record_data[field.name], field_value)
-                else:
-                    record_data[field.name] = field_value
+                field.add_to_record(record_data, self.get_node_value(node))
 
         # Traverse through children of constructed node
         if node.constructed:

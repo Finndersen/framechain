@@ -18,7 +18,7 @@ class ASN1BERField(InputField):
         :param dict/str asn_ids: Either:
             - dictionary with keys of recordtype name, and values of str ASN1 id of field within recordtype
             - string of ASN1 Id of field (hyphen-seperated field IDs, applies to all record types)
-        :param ValueAggregator aggregator: Aggregator class for combining multiple field values
+        :param BaseValueAggregator aggregator: Aggregator class for combining multiple field values
         """
         self.asn_ids = asn_ids
         self.aggregator = aggregator
@@ -36,6 +36,21 @@ class ASN1BERField(InputField):
 
     def applicable_to_record_type(self, record_type):
         return isinstance(self.asn_ids, str) or record_type.name in self.asn_ids
+
+    def add_to_record(self, record, raw_value):
+        """
+        Add new raw field value to record dictionary
+        If field already exists in record, will need to aggregate new value with existing
+        :param dict record:
+        :param raw_value:
+        :return:
+        """
+        converted_value = self.convert_value(raw_value)
+        # Handle duplicate field entries (fields within SEQUENCE OF)
+        if self.name in record:
+            record[self.name] = self.aggregate_values(record[self.name], converted_value)
+        else:
+            record[self.name] = converted_value
 
     def aggregate_values(self, existing_value, new_value):
         """
@@ -181,13 +196,13 @@ class MSISDNField(ASN1BERField):
 
     value_converter = TBCDBytesToString()[2:]
 
-    def validate_raw_value(self, value):
-        # Ensure Extension Indication, Nature of Address and NPI is ISDN/Telephony international number
-        if value[0:1] != b'\x91':
-            raise ValidationError('Expected ISDN/Telephony International Number but got: {}'.format(value))
+    # def validate_raw_value(self, value):
+    #     # Ensure Extension Indication, Nature of Address and NPI is ISDN/Telephony international number
+    #     if value[0:1] != b'\x91':
+    #         raise ValidationError('Expected ISDN/Telephony International Number but got: {}'.format(value))
 
 
-class ValueAggregator(object):
+class BaseValueAggregator(object):
     """
     Base class for aggregator which defines logic for combining multiple values of same field
     (for when field occurs multiple times, e.g. in SEQUENCE OF)
@@ -197,7 +212,7 @@ class ValueAggregator(object):
         raise NotImplementedError()
 
 
-class SumAggregator(ValueAggregator):
+class SumAggregator(BaseValueAggregator):
     """
     Aggregator which sums or concatenates values
     """
@@ -205,7 +220,7 @@ class SumAggregator(ValueAggregator):
         return existing_value + new_value
 
 
-class AppendAggregator(ValueAggregator):
+class AppendAggregator(BaseValueAggregator):
     """
     Aggregator which creates sequence/list of values and appends new one
     """
