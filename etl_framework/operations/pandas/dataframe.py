@@ -19,7 +19,7 @@ class DeleteRows(CompoundOperation, DataframeOperation):
         :param callable condition: Condition to filter row on. Takes DF and returns boolean mask
         """
         self.condition = validate_callable(condition, wrap_scalar=False)
-        super().__init__([self.condition])
+        super().__init__(self.condition)
 
     def action(self, dataframe):
         # Get masked/filtered DF

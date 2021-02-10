@@ -4,6 +4,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
+
 class BaseDataframeExporter(Operation):
     """
     Base class for operation which takes dataframe and converts or exports to some kind of output format

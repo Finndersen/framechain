@@ -10,7 +10,7 @@ from etl_framework.utils import LogDuration, randomstring
 log = logging.getLogger(__name__)
 
 
-class NoOp(Operation):
+class Pass(Operation):
     """
     Returns input value with no change
     Can be useful as initial operation in Transform to start chain
@@ -21,7 +21,7 @@ class NoOp(Operation):
         return value
 
     def description(self):
-        return 'Input'
+        return 'Pass'
 
 
 class If(CompoundOperation):
@@ -40,10 +40,10 @@ class If(CompoundOperation):
         :param true_operation: Operation to execute if condition returns True
         :param false_operation: Operation to execute if condition returns False (defaults to no action)
         """
-        self.false_operation = false_operation or NoOp()
+        self.false_operation = false_operation or Pass()
         self.true_operation = true_operation
         self.condition = condition
-        super().__init__([self.false_operation, self.true_operation, self.condition])
+        super().__init__(self.false_operation, self.true_operation, self.condition)
 
     def action(self, value):
         if self.condition(value):
@@ -52,7 +52,74 @@ class If(CompoundOperation):
             return self.false_operation(value)
 
     def description(self):
-        return 'If {} then ({}), else ({})'.format(str(self.condition), self.true_operation, self.false_operation)
+        return 'If {}, \nThen: ({}), \nElse: ({})'.format(str(self.condition), self.true_operation, self.false_operation)
+
+    def short_description(self):
+        return 'If {}'.format(str(self.condition))
+
+    def add_to_graph(self, graph):
+        from pydot import Edge, Node
+        # Create start If node
+        if_node, _ = super().add_to_graph(graph)
+        # create End If node
+        end_if_node = Node(name=randomstring(10), label='EndIf')
+        graph.add_node(end_if_node)
+
+        true_start, true_end = self.true_operation.add_to_graph(graph)
+        false_start, false_end = self.false_operation.add_to_graph(graph)
+
+        graph.add_edge(Edge(if_node, true_start, label='True'))
+        graph.add_edge(Edge(if_node, false_start, label='False'))
+        graph.add_edge(Edge(true_end, end_if_node))
+        graph.add_edge(Edge(false_end, end_if_node))
+
+        return if_node, end_if_node
+
+
+class SwitchCase(CompoundOperation):
+    """
+    Operation which works like a Switch-Case statement.
+    Contains a mapping of values to operations to run if input is equal to that value
+    """
+    def __init__(self, key_operation, case_mapping, default=None):
+        """
+        :param Operation key_operation: Transform to perform on input value to get mapping key
+        :param dict case_mapping: Mapping of case values to associated operations
+        :param default: Default operation to run if value is not matched
+        """
+        self.default = default or Pass()
+        self.case_mapping = case_mapping
+        self.key_operation = key_operation
+        super().__init__(*list(case_mapping.values()), default, key_operation)
+
+    def action(self, value):
+        case_value = self.key_operation(value)
+        if case_value in self.case_mapping:
+            return self.case_mapping[case_value](value)
+        else:
+            return self.default(value)
+
+    def short_description(self):
+        return 'Switch on value of: \n"{}"'.format(self.key_operation)
+
+    def add_to_graph(self, graph):
+        from pydot import Edge, Node
+        DEFAULT_KEY = '_default_'
+        # Create Start switch node
+        start_switch_node, _ = super().add_to_graph(graph)
+        # Create end switch node
+        end_switch_node = Node(name=randomstring(10), label='End Switch')
+        graph.add_node(end_switch_node)
+
+        for case, operation in {**self.case_mapping, DEFAULT_KEY: self.default}.items():
+            start_node, end_node = operation.add_to_graph(graph)
+            # Add edge joining Switch node start of case operation
+            graph.add_edge(Edge(start_switch_node, start_node,
+                                label='Default' if case == DEFAULT_KEY else 'Case: "{}"'.format(case)))
+            # Add edge joining end of case operation to end switch node
+            graph.add_edge(Edge(end_node, end_switch_node))
+
+        return start_switch_node, end_switch_node
 
 
 class Fork(CompoundOperation):
@@ -71,7 +138,7 @@ class Fork(CompoundOperation):
         if len(fork_operations) < 2:
             self.error(ValueError, 'Provide at least 2 operations to Fork')
         self.fork_operations = list(fork_operations)
-        super().__init__(self.fork_operations)
+        super().__init__(*self.fork_operations)
 
     def action(self, input_val):
         """
@@ -106,15 +173,20 @@ class Fork(CompoundOperation):
         return profile_data
 
     def add_to_graph(self, graph):
-        from pydot import Edge, Node
+        from pydot import Edge, Node, Cluster
+        # Create end node for Fork
+        output_node = Node(name=randomstring(10), label='List of results')
+        graph.add_node(output_node)
         # Create Fork node
-        fork_node, fork_node = super().add_to_graph(graph)
+        fork_node, _ = super().add_to_graph(graph)
         for operation in self.fork_operations:
             start_node, end_node = operation.add_to_graph(graph)
-            graph.add_edge(Edge(fork_node, start_node,
-                                ltail=fork_node.obj_dict['parent_graph'].get_name(),
-                                lhead=start_node.obj_dict['parent_graph'].get_name()))
-        return fork_node, None
+            # Add edge joining Fork node start of fork operation
+            graph.add_edge(Edge(fork_node, start_node))
+            # Add edge joining end of fork operation to results node
+            graph.add_edge(Edge(end_node, output_node))
+
+        return fork_node, output_node
 
     def short_description(self):
         return 'Fork into {} chains'.format(len(self.fork_operations))

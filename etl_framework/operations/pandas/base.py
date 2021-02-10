@@ -49,7 +49,7 @@ class ConditionallyAppliedOperation(CompoundOperation):
         self.operation = validate_callable(operation)
         self.condition = validate_callable(condition, wrap_scalar=False)
         wrapped_operations = [self.operation, self.condition] if self.condition else [self.operation]
-        super().__init__(wrapped_operations)
+        super().__init__(*wrapped_operations)
 
     def add_to_graph(self, graph):
         # Create Subgraph/cluster to contain wrapped operation

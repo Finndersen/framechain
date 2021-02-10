@@ -14,7 +14,7 @@ class IsIn(ColumnOperation):
     Input: Series
     Output: Boolean Series
     e.g.
-    ValueIn(['red', 'brown', 'blonde'])
+    IsIn(['red', 'brown', 'blonde'])
 
     """
 

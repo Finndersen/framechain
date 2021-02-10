@@ -71,7 +71,7 @@ class Apply(CompoundOperation):
         :param operation: Operation to apply to each element of vector
         """
         self.operation = operation
-        super().__init__([self.operation])
+        super().__init__(self.operation)
 
     def action(self, vector):
         """

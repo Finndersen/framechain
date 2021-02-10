@@ -17,7 +17,7 @@ class Cached(CompoundOperation):
 
     def __init__(self, operation):
         self.operation = Memoized(operation)
-        super().__init__([self.operation])
+        super().__init__(self.operation)
 
     def action(self, *args, **kwargs):
         """
@@ -53,7 +53,7 @@ class MapArguments(CompoundOperation):
         """
         self.arg_mapping = arg_mapping
         self.operation = operation
-        super().__init__([self.operation])
+        super().__init__(self.operation)
 
     def action(self, *args, **kwargs):
         """

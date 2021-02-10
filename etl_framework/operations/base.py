@@ -266,9 +266,9 @@ class BaseOperation(object):
     def show_graph(self):
         from pydot import Dot
         from IPython.display import Image, display
-        graph = Dot(graph_name="G", compound='true')
+        graph = Dot(graph_name="G", compound='true', graph_type='digraph')
         start_node, end_node = self.add_to_graph(graph)
-        plt = Image(graph.create_png())
+        plt = Image(graph.create(format='png'))
         display(plt)
 
     def add_to_graph(self, graph):
@@ -320,12 +320,12 @@ class Operation(BaseOperation, OperationOperators):
 class OperatorWrapperMixin(BaseOperation):
     """
     Mixin for operations which wrap other operations
-    Performs chaining of various operation methods and handles profiling of underlying operations
+    Handles profiling of wrapped operations
     """
-    def __init__(self, wrapped_operations):
+    def __init__(self, *wrapped_operations):
         """
 
-        :param list wrapped_operations: List of operations which are encapsulated within (called by) this one
+        :param Operation wrapped_operations: operations which are encapsulated within (called by) this one
         """
         self.wrapped_operations = wrapped_operations
 
@@ -399,7 +399,7 @@ class OperationsWithOperator(CompoundOperation):
         # Store operator string
         assert operator_str in self.OPERATORS, '{} is not a valid operator string'.format(operator_str)
         self.operator_str = operator_str
-        super().__init__([self.op1, self.op2])
+        super().__init__(self.op1, self.op2)
         # Validate operation input types (both must have common valid input type)
         # TODO: Rework operation type compatability
         # op1_translations = TypeTranslations.get_for_operation(op1)
@@ -450,7 +450,7 @@ class SingleOperandOperator(CompoundOperation):
         self.operation = op
         # Inherit type translations
         # self.calling_translations = TypeTranslations.get_for_operation(op)
-        super().__init__([self.operation])
+        super().__init__(self.operation)
 
 
 class INVERT(SingleOperandOperator):
@@ -550,9 +550,7 @@ class THEN(CompoundOperation):
         from pydot import Edge
         start_node1, end_node1 = self.op1.add_to_graph(graph)
         start_node2, end_node2 = self.op2.add_to_graph(graph)
-        graph.add_edge(Edge(end_node1, start_node2,
-                            ltail=end_node1.obj_dict['parent_graph'].get_name(),
-                            lhead=start_node2.obj_dict['parent_graph'].get_name()))
+        graph.add_edge(Edge(end_node1, start_node2))
         return start_node1, end_node2
 
     def add_profile_data(self, profile_data, caller=None, add_self_data=False):
@@ -564,24 +562,8 @@ class THEN(CompoundOperation):
     def short_description(self):
         return 'Long chain of operations'
 
-    # def get_chained_calling_translations(self, op1, op2):
-    #     """
-    #     Get chained type translation across two operations
-    #     If translations are not specified, assume operation has full compatability and does no translation
-    #     :param op1: operation whos input will be provided by this wrapping class
-    #     :param op2: operation whos input will be provided by op1
-    #     :return:
-    #     """
-    #     op1_translations = TypeTranslations.get_for_operation(op1)
-    #     op2_translations = TypeTranslations.get_for_operation(op2)
-    #     # Build chained translation
-    #     chained_translations = {op1_in: op2_translations[op1_out]
-    #                             for op1_in, op1_out in op1_translations.items()
-    #                             if op1_out in op2_translations}
-    #     return chained_translations
-
     def description(self):
-        return '({}) -> ({})'.format(self.op1, self.op2)
+        return '({}) --> ({})'.format(self.op1, self.op2)
 
 
 class UnchainableOperation(object):

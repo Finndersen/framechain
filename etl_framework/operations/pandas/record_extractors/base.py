@@ -31,7 +31,7 @@ class BaseDataFrameGenerator(CompoundOperation):
                     'Input field: "{}" has already been defined for {}'.format(field.name, type(self).__name__))
             field_names.add(field.name)
         self.fields = fields
-        super().__init__(self.fields)
+        super().__init__(*self.fields)
 
     def action(self, input_data):
         """
