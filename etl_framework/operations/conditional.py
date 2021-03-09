@@ -1,0 +1,72 @@
+import re
+
+from etl_framework.operations import Operation
+
+
+class In(Operation):
+    """
+    Used to implement 'in' operator
+    """
+
+    def __init__(self, collection):
+        """
+
+        :param collection: Collection of values or object to test if value is included in
+        """
+        self.collection = collection
+
+    def action(self, value):
+        return value in self.collection
+
+    def description(self):
+        return 'Value is in: {}'.format(self.collection)
+
+
+class Is(Operation):
+    """
+    Used to implement 'is' operator
+    """
+
+    def __init__(self, other_value):
+        """
+
+        :param other_value: Other value to compare to
+        """
+        self.other_value = other_value
+
+    def action(self, value):
+        return value is self.other_value
+
+    def description(self):
+        return 'Value is: {}'.format(self.other_value)
+
+
+class StringContains(Operation):
+    """
+    Test whether string value contains pattern or regex
+    """
+    def __init__(self, pattern, regex=False):
+        """
+
+        :param str pattern: search pattern
+        :param bool regex: Whether pattern is regex
+        """
+        self.pattern = re.compile(pattern) if regex else pattern
+        self.regex = regex
+
+    def action(self, value):
+        if self.regex:
+            return self.pattern.search(value)
+        else:
+            return self.pattern in value
+
+    def description(self):
+        return 'String contains: "{}"'.format(self.pattern)
+
+
+class StringIsNumeric(Operation):
+    """
+    Test whether string value is numeric
+    """
+    def action(self, value):
+        return value.isnumeric()
