@@ -1,7 +1,5 @@
-from .base import Operation
+from etl_framework.operations.base import Operation
 import os, io
-from Crypto.Cipher import AES
-from Crypto.Protocol.KDF import scrypt
 
 
 class DecryptDataAESGCM(Operation):
@@ -25,6 +23,9 @@ class DecryptDataAESGCM(Operation):
         :param bytes encrypted_data: Encrypted data including salt, nonce, ciphertext and auth tag
         :return:
         """
+        # Import here so only needed when operation is used
+        from Crypto.Cipher import AES
+        from Crypto.Protocol.KDF import scrypt
         salt = encrypted_data[:32]
         nonce = encrypted_data[32:48]
         ciphertext = io.BytesIO(encrypted_data[48:-16])

@@ -34,8 +34,13 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
         # Add Record Type field so it is not removed during column re-ordering
         super().__init__(fields + [ASN1BERField(self.RECORDTYPE_FIELD_NAME, None)])
 
-    def create_dataframe(self, file_reader):
-        return pd.DataFrame([record for record in self.get_records(file_reader)])
+    def create_dataframe(self, file_data):
+        """
+        Create dataframe from input file data
+        :param bytes file_data: Binary input data
+        :return:
+        """
+        return pd.DataFrame([record for record in self.get_records(file_data)])
 
     def get_records(self, file_data):
         """

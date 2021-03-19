@@ -159,7 +159,11 @@ class IntegerFieldMixin(object):
 
         :param bool large: Whether to use large integer (64 bits instead of 32)
         """
-        super().__init__(*args, column_converter=ToInteger(large), **kwargs)
+        if 'column_converter' in kwargs:
+            column_converter = ToInteger(large) >> kwargs.pop('column_converter')
+        else:
+            column_converter = ToInteger(large)
+        super().__init__(*args, column_converter=column_converter, **kwargs)
 
 
 class TimestampFieldMixin(object):

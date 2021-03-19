@@ -101,6 +101,14 @@ class BytesReader(Operation):
         return io.BytesIO(binary_data)
 
 
+class TextReader(Operation):
+    """
+    Takes text input and wraps in io.StringIO to produce reader object
+    """
+    def action(self, string_data):
+        return io.StringIO(string_data)
+
+
 class DecompressData(Operation):
     """
     Decompress binary data, zipped using GZIP, ZLIB or DEFLATE formats

@@ -165,6 +165,7 @@ class HDFSFileSystemWriter(BaseFileWriter):
         :param encoding: Encoding to apply to input data to convert to binary (set to None if binary data is provided)
         :param overwrite: Whether to overwrite existing files
         """
+        # Import here so only needed when operation is usec
         from hdfs import InsecureClient
         super().__init__(output_path=path)
         self.client = InsecureClient(url, user, timeout=1)
