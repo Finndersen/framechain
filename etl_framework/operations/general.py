@@ -311,7 +311,7 @@ class Map(Operation):
         'value': 'value'
     }
 
-    def __init__(self, mapping,  missing_value=None):
+    def __init__(self, mapping,  missing_value=ERROR):
         """
 
         :param dict mapping: Value mapping dictionary
@@ -321,13 +321,16 @@ class Map(Operation):
         Other: Use this value as default
         """
         if missing_value == self.ORIGINAL:
-            mapping = DictWithPassthrough(**mapping)
+            dict_type = DictWithPassthrough()
         elif missing_value == self.ERROR:
-            mapping = DictWithError(**mapping)
+            dict_type = DictWithError()
         else:
-            mapping = DictWithDefault(missing_value, **mapping)
+            dict_type = DictWithDefault(missing_value)
 
-        self.mapping = mapping
+        # Dict cannot be initialised with non-string keywords, so must use update()
+        dict_type.update(mapping)
+
+        self.mapping = dict_type
 
     def action(self, value):
         """Return mapped value"""

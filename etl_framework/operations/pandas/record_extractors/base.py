@@ -70,11 +70,11 @@ class BaseDataFrameGenerator(CompoundOperation):
 class InputField(OperatorWrapperMixin, BaseOperation):
     """
     Class for defining a field in a source data record which will correspond to a DataFrame column
+    Performs vectorised value conversion on field column when called
     Is a compound operation because associated converters are operations
     """
     column_converter = None
     value_converter = None
-    calling_translations = wrapping_translations = {'dataframe': 'column'}
     EMPTY_VALUES = {''}   # Values which will be converted to None
 
     def __init__(self, name, mandatory=False, column_converter=None, value_converter=None):
@@ -89,7 +89,7 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         self.mandatory = mandatory
         self.column_converter = column_converter or self.column_converter
         self.value_converter = value_converter or self.value_converter
-        super().__init__([converter for converter in [self.column_converter, self.value_converter]
+        super().__init__(*[converter for converter in [self.column_converter, self.value_converter]
                           if converter is not None])
 
     def action(self, column):

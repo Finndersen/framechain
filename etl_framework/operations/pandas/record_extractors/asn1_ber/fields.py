@@ -1,4 +1,5 @@
 from etl_framework.operations.pandas.transforms import StringColumnToDatetime
+from etl_framework.operations.pandas.general import ColumnMap
 from etl_framework.operations.transforms.binary import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, BytesToDateString, BytesToTime, BytesToTimeString, \
     BytesToHexString
 from etl_framework.operations.transforms import TBCDBytesToString, BinaryToIPv4Address, BinaryToIPv6Address, \
@@ -18,7 +19,7 @@ class ASN1BERField(InputField):
         :param dict/str asn_ids: Either:
             - dictionary with keys of recordtype name, and values of str ASN1 id of field within recordtype
             - string of ASN1 Id of field (hyphen-seperated field IDs, applies to all record types)
-        :param BaseValueAggregator aggregator: Aggregator class for combining multiple field values
+        :param BaseValueAggregator aggregator: Aggregator class for combining multiple field values (in case of SEQUENCE OF)
         """
         self.asn_ids = asn_ids
         self.aggregator = aggregator
@@ -74,9 +75,23 @@ class BooleanField(ASN1BERField):
 
 class IntegerField(IntegerFieldMixin, ASN1BERField):
     """
-    Bytes to int64. Use for INTEGER or ENUMERATED ASN1 type
+    Bytes to int64. Use for INTEGER ASN1 type
     """
     value_converter = BytesToInteger()
+
+
+class EnumeratedField(IntegerField):
+    """
+    Field which translates an enumerated integer value to corresponding string value
+    """
+    def __init__(self, name, asn_id, mapping, **kwargs):
+        """
+
+        :param args:
+        :param dict mapping: enumeration mapping (of integer values to string representation)
+        :param kwargs:
+        """
+        super().__init__(name, asn_id, column_converter=ColumnMap(mapping), **kwargs)
 
 
 class StringField(ASN1BERField):

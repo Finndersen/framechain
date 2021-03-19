@@ -73,19 +73,29 @@ class BytesToHexString(Operation):
 
 class IntegerToBytes(Operation):
     """
-    Convert integer value to bytes string
+    Convert integer value to bytes string. E.g:
+    200 -> b'\xc8'
+    99 -> b'c' (ascii representation of 99)
+    260 -> b'\x01\x04'
     """
-    def __init__(self, bytes_length):
+    def __init__(self, bytes_length=None, byteorder='big'):
         """
 
-        :param bytes_length: Length of output bytes string
+        :param int bytes_length: Length of output bytes string.
+        Minimum required length will be determined automatically if not provided
+        :param str byteorder:
         """
         self.bytes_length = bytes_length
+        self.byteorder = byteorder
 
     def action(self, int_value):
-        return int_value.to_bytes(self.bytes_length, byteorder='big')
+        bytes_length = self.bytes_length or (int_value // 255) + 1
+        return int_value.to_bytes(bytes_length, byteorder=self.byteorder)
 
 
+#########################################
+# Telephony-related Binary data conversions
+#########################################
 class BinaryDurationToInt(Operation):
     """
     Convert duration in 3-byte binary format to single integer value.
@@ -94,11 +104,6 @@ class BinaryDurationToInt(Operation):
     """
     def action(self, byte_val):
         return byte_val[0] * 3600 + byte_val[1] * 60 + byte_val[2]
-
-
-#########################################
-# Telephone-related Binary data conversions
-#########################################
 
 
 class BytesToDate(Operation):

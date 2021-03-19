@@ -1,4 +1,5 @@
 from etl_framework import exceptions
+from collections import defaultdict
 import logging
 
 log = logging.getLogger(__name__)
@@ -52,34 +53,38 @@ class ASN1BERDecoder(object):
             Values are length of header/trailer line (how many positions to skip)
         """
         record_type_names = {record_type.name for record_type in record_types}
+        field_names = set()
         for field in fields:
             # Validate all field mappings use defined recordtype
             if isinstance(field.asn_ids, dict):
                 for record_type_name in field.asn_ids:
                     if record_type_name not in record_type_names:
                         raise exceptions.ETLConfigurationError('Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
+            # Validate no duplicate field names
+            if field.name in field_names:
+                raise ValueError('Field with name: "{}" has already been defined'.format(field.name))
+            else:
+                field_names.add(field.name)
 
         self.asn_data = self.current_record_type = self.record_node = None
         self.asn_index = 0
         self.header_trailer_lengths = header_trailer_lengths or {}
-        self.recordtype_depth = self.get_recordtype_depth(record_types)
+        # Validate record types have same ASN ID depth
+        assert all([record_type.id_depth == record_types[0].id_depth for record_type in
+                    record_types]), "All record schemas must have same recordtype tag length"
 
+        self.recordtype_depth = record_types[0].id_depth
         self.target_recordtypes = {convert_asn_tag_to_unique_integer(record_type.asn_id): record_type
                                    for record_type in record_types}
 
-        # Construct mapping of field unique ASN ID to field instance, for all target fields (across all record types)
-        self.target_fields = {}
+        # Construct mapping of field unique ASN ID to list of field instances, for all target fields
+        # (across all record types - different record type will automatically have different field ASN ID)
+        self.target_fields = defaultdict(list)
         for record_type in record_types:
             for field in fields:
                 if field.applicable_to_record_type(record_type):
                     field_absolute_id = convert_asn_tag_to_unique_integer(field.get_asn_id_for_record_type(record_type))
-                    self.target_fields[field_absolute_id] = field
-
-    def get_recordtype_depth(self, record_types):
-        # Validate record types have same ASN ID depth
-        assert all([record_type.id_depth == record_types[0].id_depth for record_type in
-                    record_types]), "All record schemas must have same recordtype tag length"
-        return record_types[0].id_depth
+                    self.target_fields[field_absolute_id].append(field)
 
     def set_asn_data(self, asn_data):
         """
@@ -200,7 +205,6 @@ class ASN1BERDecoder(object):
         :param dict record_data:
         :return:
         """
-        # log.debug('Found ASN1 node: {} '.format(node))
         # If record is being built, detect recordtype or add node value
         if record_data is not None:
 
@@ -213,8 +217,11 @@ class ASN1BERDecoder(object):
 
             # Add field data to record if ID is a target field
             elif (not node.constructed) and (node.id in self.target_fields):
-                field = self.target_fields[node.id]
-                field.add_to_record(record_data, self.get_node_value(node))
+                raw_field_value = self.get_node_value(node)
+                # Can be multiple field extractions for single ASN1 field
+                fields = self.target_fields[node.id]
+                for field in fields:
+                    field.add_to_record(record_data, raw_field_value)
 
         # Traverse through children of constructed node
         if node.constructed:

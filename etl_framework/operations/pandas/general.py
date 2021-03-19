@@ -39,12 +39,6 @@ class ColumnMap(Map, ColumnOperation):
     Provide mapping dictionary which will be used to Convert column values
     Can specify logic for what happens when lookup values are missing (raise error, pass through key, use default)
     """
-    ORIGINAL = object()
-    ERROR = object()
-
-    calling_translations = {
-        'column': 'column'
-    }
 
     def action(self, value):
         """Apply mapping to column or value"""
