@@ -3,6 +3,8 @@ import csv
 import pandas as pd
 
 from etl_framework.exceptions import MandatoryFieldError
+from etl_framework.operations.io import TextReader
+from etl_framework.operations.transforms import BytesToString
 from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, \
     TimestampFieldMixin
 
@@ -36,7 +38,23 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         self.header = header
         super().__init__(fields)
 
-    def create_dataframe(self, file_reader):
+    def create_dataframe(self, file_data):
+        """
+        Create dataframe from CSV data file.
+        Input can be file reader object (most efficient), or string or bytes data
+        :param file_data:
+        :return:
+        """
+        # Convert input data to text reader object
+        if isinstance(file_data, str):
+            # Create reader object for string data
+            file_data = TextReader()(file_data)
+        elif isinstance(file_data, bytes):
+            # Convert bytes to text and Create reader object for string data
+            file_data = (BytesToString() >> TextReader())(file_data)
+        elif not hasattr(file_data, 'open'):
+            raise ValueError('Input file data should be str, bytes or reader object, not {}'.format(type(file_data)))
+
         # If file has headers, use_columns is list of field names, otherwise list of field positions
         use_columns = [field.column_id for field in self.fields]
         # Get mapping of field header names or column IDs to dtype definitions
@@ -46,7 +64,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         converters = {field.column_id: field.value_converter
                       for field in self.fields if field.value_converter}
 
-        dataframe = pd.read_csv(file_reader,
+        dataframe = pd.read_csv(file_data,
                                 sep=self.delimiter,
                                 header=0 if self.header else None,
                                 quoting=self.quoting,

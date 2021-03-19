@@ -37,9 +37,15 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
     def create_dataframe(self, file_data):
         """
         Create dataframe from input file data
-        :param bytes file_data: Binary input data
+        :param bytes file_data: Binary input data or file reader object
         :return:
         """
+        if not isinstance(file_data, bytes):
+            if hasattr(file_data, 'read'):
+                file_data = file_data.read()
+            else:
+                raise ValueError('Expected bytes data or file reader object, not {}'.format(type(file_data)))
+
         return pd.DataFrame([record for record in self.get_records(file_data)])
 
     def get_records(self, file_data):
