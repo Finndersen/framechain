@@ -5,24 +5,25 @@ from etl_framework.operations.transforms.binary import BytesToString, BytesToBoo
 from etl_framework.operations.transforms import TBCDBytesToString, BinaryToIPv4Address, BinaryToIPv6Address, \
     BCDTimestampToString
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
-from etl_framework.exceptions import ETLFieldError, ValidationError
+from .field_setters import NoAggregation
 
 
 class ASN1BERField(InputField):
     """
     Class used to define a BER ASN1 field
     """
-    def __init__(self, name, asn_ids, aggregator=None, **kwargs):
+    def __init__(self, name, asn_ids, setter=None, **kwargs):
         """
 
         :param str name: name of ASN1 field
         :param dict/str asn_ids: Either:
             - dictionary with keys of recordtype name, and values of str ASN1 id of field within recordtype
             - string of ASN1 Id of field (hyphen-seperated field IDs, applies to all record types)
-        :param BaseValueAggregator aggregator: Aggregator class for combining multiple field values (in case of SEQUENCE OF)
+        :param BaseFieldSetter setter: Object which defines logic for how field values are set and aggregated when there
+        are multiple (for when field occurs multiple times, e.g. in SEQUENCE OF)
         """
         self.asn_ids = asn_ids
-        self.aggregator = aggregator
+        self.setter = setter or NoAggregation()
         super().__init__(name, **kwargs)
 
     def get_asn_id_for_record_type(self, record_type):
@@ -47,23 +48,8 @@ class ASN1BERField(InputField):
         :return:
         """
         converted_value = self.convert_value(raw_value)
-        # Handle duplicate field entries (fields within SEQUENCE OF)
-        if self.name in record:
-            record[self.name] = self.aggregate_values(record[self.name], converted_value)
-        else:
-            record[self.name] = converted_value
-
-    def aggregate_values(self, existing_value, new_value):
-        """
-        Logic for aggregating multiple values of a field that occurs multiple times in a record (if with SEQUENCE OF
-        or SET OF construct)
-        :param existing_value: Existing aggregated field value
-        :param new_value: New field value
-        :return:
-        """
-        if self.aggregator is None:
-            raise ETLFieldError('{} encountered multiple values but has no aggregator defined'.format(self))
-        return self.aggregator(existing_value, new_value)
+        # Set field value using aggregator
+        self.setter.add_to_record(record, self.name, converted_value)
 
 
 class BooleanField(ASN1BERField):
@@ -142,7 +128,6 @@ class BCDTimestampField(ASN1BERField):
     """
     From BCD timestamp in format YYMMDDhhmmssShhmm to timezone-aware pd.datetime64
     Chain BCDTimestampToString and StringToDatetime converters
-    TODO: Check if its faster to do Scalar or Vector converter for string to datetime?
     """
     value_converter = BCDTimestampToString()
     column_converter = StringColumnToDatetime(format='%y%m%d%H%M%S%z')
@@ -217,30 +202,3 @@ class MSISDNField(ASN1BERField):
     #         raise ValidationError('Expected ISDN/Telephony International Number but got: {}'.format(value))
 
 
-class BaseValueAggregator(object):
-    """
-    Base class for aggregator which defines logic for combining multiple values of same field
-    (for when field occurs multiple times, e.g. in SEQUENCE OF)
-    Defines __call__() method which takes existing value and new value and returns aggregation
-    """
-    def __call__(self, existing_value, new_value):
-        raise NotImplementedError()
-
-
-class SumAggregator(BaseValueAggregator):
-    """
-    Aggregator which sums or concatenates values
-    """
-    def __call__(self, existing_value, new_value):
-        return existing_value + new_value
-
-
-class AppendAggregator(BaseValueAggregator):
-    """
-    Aggregator which creates sequence/list of values and appends new one
-    """
-    def __call__(self, existing_value, new_value):
-        if not isinstance(existing_value, list):
-            existing_value = [existing_value]
-        existing_value.append(new_value)
-        return existing_value

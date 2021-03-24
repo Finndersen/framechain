@@ -11,7 +11,7 @@ from etl_framework.utils import convert_timezone
 
 class StringColumnToDatetime(ColumnOperation):
     """
-    Converter to convert column of string values to datetime
+    Convert a column of string values to datetime
     Runs as vector operation so should be faster than all other scalar methods
     Format does not need to be supplied if string is ISO format
     If timestamps have different timezones, output will be object array and ConvertColumnTimezone

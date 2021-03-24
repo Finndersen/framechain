@@ -45,18 +45,18 @@ class StringContains(Operation):
     """
     Test whether string value contains pattern or regex
     """
-    def __init__(self, pattern, regex=False):
+    def __init__(self, pattern, is_regex=False):
         """
 
         :param str pattern: search pattern
-        :param bool regex: Whether pattern is regex
+        :param bool is_regex: Whether pattern is regex
         """
-        self.pattern = re.compile(pattern) if regex else pattern
-        self.regex = regex
+        self.pattern = re.compile(pattern) if is_regex else pattern
+        self.is_regex = is_regex
 
     def action(self, value):
-        if self.regex:
-            return self.pattern.search(value)
+        if self.is_regex:
+            return bool(self.pattern.search(value))
         else:
             return self.pattern in value
 

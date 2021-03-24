@@ -36,7 +36,8 @@ class BinaryToIPv6Address(Operation):
 
 class BCDTimestampToString(Operation):
     """
-    Convert BCD timestamp in format YYMMDDhhmmssShhmm to String
+    Convert binary BCD timestamp in format YYMMDDhhmmssShhmm to String
+    The UTC offset sign (+ or -) is encoded as ASCII value while rest are BCD
     """
     def action(self, value):
         return value[:6].hex() + chr(value[6]) + value[7:].hex()

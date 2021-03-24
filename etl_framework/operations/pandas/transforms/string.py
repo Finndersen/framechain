@@ -1,4 +1,5 @@
 from etl_framework.operations.pandas.base import ColumnOperation
+from etl_framework.operations.transforms.string import RegexExtract
 import re
 
 
@@ -48,35 +49,21 @@ class StringLength(ColumnOperation):
         return 'len()'
 
 
-class RegexExtract(ColumnOperation):
+class ColumnRegexExtract(RegexExtract):
     """
     Extract text from a string series using regex pattern, return a single series of extracted values
     Pattern should have a single capture group
     Will return NA for any values that do not match the regex
     """
-    def __init__(self, pattern, **flags):
-        """
-
-        :param str pattern: Regex pattern to match on
-        :param flags: Extra flags for regex library
-        """
-        # Validate pattern has only one capture group
-        if re.compile(pattern).groups != 1:
-            raise ValueError('Regex pattern: "{}" should have only one capture group'.format(pattern))
-
-        self.flags = flags
-        self.pattern = pattern
 
     def action(self, string_series):
-        return string_series.str.extract(self.pattern, expand=False, **self.flags)
-
-    def description(self):
-        return 'RegexExtract with pattern: "{}"'.format(self.pattern)
+        return string_series.str.extract(self.compiled_pattern.pattern, expand=False, **self.flags)
 
 
-class RegexFindall(ColumnOperation):
+class ColumnRegexFindall(ColumnOperation):
     """
-    Apply re.findall() to string column, each result value will be a list of matches from the original string
+    Vectorised equivalent of re.findall() for string column
+    Each result value will be a list of matches from the original string
     """
     def __init__(self, pattern, **flags):
         """
@@ -92,3 +79,22 @@ class RegexFindall(ColumnOperation):
 
     def description(self):
         return 'RegexFindall with pattern: "{}"'.format(self.pattern)
+
+
+class StringColumnJoin(ColumnOperation):
+    """
+    Join lists contained as elements in the Series/Index with passed delimiter.
+    Vectorised equivalent of str.join()
+    """
+    def __init__(self, delimiter):
+        """
+
+        :param sr delimiter: Delimiter to use for join
+        """
+        self.delimiter = delimiter
+
+    def action(self, string_series):
+        return string_series.str.join(self.delimiter)
+
+    def description(self):
+        return 'Join strings with: "{}"'.format(self.delimiter)

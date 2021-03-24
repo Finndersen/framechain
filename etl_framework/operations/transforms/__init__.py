@@ -5,3 +5,4 @@ from .binary import BytesToBoolean, BytesToTimeString, BytesToTime, BytesToDate,
 from .telephony import TBCDBytesToString, BinaryToIPv4Address, BinaryToIPv6Address, BCDTimestampToString, ConvertCellID, IPAddressFromHexString
 from .numeric import IntToHexString
 from .datetime import *
+from .string import *
