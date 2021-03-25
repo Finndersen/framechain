@@ -178,3 +178,41 @@ class FillNA(ColumnOperation):
         return column.fillna(self.value)
 
 
+def to_list(*args):
+    return args
+
+
+class MergeRowValues(Operation):
+    """
+    Merges values across multiple fields in a Series
+    Define function for merge behavior and filter behavior
+
+    merge_function: Function to merge row values. Takes field values as positional args, return single value
+                    Merges values into list by default
+    filter_function: Filter function to ignore field values, takes field value and returns False if value should be
+                    ignored. Ignores null values by default
+    Input: Series (row)
+    Output: Merged set of values or None
+    """
+    def __init__(self, *field_names, merge_function=to_list, filter_function=pd.isna):
+        """
+
+        :param str field_names: Sequence of field names to merge
+        :param merge_function: Function to merge row values. Takes field values as positional args, return single value
+                Merges values into list by default
+        :param filter_function: Filter function to ignore field values, takes field value and returns False if value
+        should be ignored. Ignores null values by default
+        """
+        if len(field_names) < 2:
+            raise ValueError('Must provide at least 2 field names')
+        self.field_names = field_names
+        self.merge_function = merge_function
+        self.filter_function = filter_function
+
+    def action(self, row):
+        # Get list of sets to merge
+        values = [row[field_name] for field_name in self.field_names if not self.filter_function(row[field_name])]
+        if not values:
+            return None
+        return self.merge_function(*values)
+

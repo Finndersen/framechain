@@ -8,11 +8,14 @@ from etl_framework.operations.pandas.record_extractors.base import InputField, I
 from .field_setters import NoAggregation
 
 
+IGNORE_NOTHING = object()
+
+
 class ASN1BERField(InputField):
     """
     Class used to define a BER ASN1 field
     """
-    def __init__(self, name, asn_ids, setter=None, **kwargs):
+    def __init__(self, name, asn_ids, setter=None, ignore_value=IGNORE_NOTHING, **kwargs):
         """
 
         :param str name: name of ASN1 field
@@ -21,9 +24,11 @@ class ASN1BERField(InputField):
             - string of ASN1 Id of field (hyphen-seperated field IDs, applies to all record types)
         :param BaseFieldSetter setter: Object which defines logic for how field values are set and aggregated when there
         are multiple (for when field occurs multiple times, e.g. in SEQUENCE OF)
+        :param ignore_value: If converted field value is equal to this, field value will not be set
         """
         self.asn_ids = asn_ids
         self.setter = setter or NoAggregation()
+        self.ignore_value = ignore_value
         super().__init__(name, **kwargs)
 
     def get_asn_id_for_record_type(self, record_type):
@@ -49,7 +54,8 @@ class ASN1BERField(InputField):
         """
         converted_value = self.convert_value(raw_value)
         # Set field value using aggregator
-        self.setter.add_to_record(record, self.name, converted_value)
+        if converted_value != self.ignore_value:
+            self.setter.add_to_record(record, self.name, converted_value)
 
 
 class BooleanField(ASN1BERField):
