@@ -540,7 +540,7 @@ class THEN(CompoundOperation):
         """
         self.op1 = validate_callable(op1)
         self.op2 = validate_callable(op2)
-        super().__init__([self.op1, self.op2])
+        super().__init__(self.op1, self.op2)
 
     def action(self, *args):
         # Return chained output.

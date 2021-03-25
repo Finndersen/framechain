@@ -93,8 +93,8 @@ class Lambda(Operation):
         if type_translation:
             self.calling_translations = type_translation
 
-    def action(self, value):
-        return self.func(value)
+    def action(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
 
     def description(self):
         return self._description
@@ -203,3 +203,40 @@ class GetAttr(Operation):
 
     def description(self):
         return 'Attribute: "{}"'.format(self.attr_name)
+
+
+class Filter(Operation):
+    """
+    Operation which takes sequence of values and filters according to provided function
+    Returns list of filtered values
+    """
+    def __init__(self, filter_func, invert=False):
+        """
+
+        :param filter_func: Function to check each value. Returns true for values to be kept
+        :param bool invert: Invert logic (keep values where filter_func returns False)
+        """
+        self.filter_func = filter_func
+        self.invert = invert
+
+    def action(self, values):
+        """
+
+        :param iterable values:
+        :return:
+        """
+        if self.invert:
+            return [val for val in values if not self.filter_func(val)]
+        else:
+            return [val for val in values if self.filter_func(val)]
+
+    def description(self):
+        return 'Filter values for which "{}" returns {}'.format(self.filter_func, not self.invert)
+
+
+class ArgsToList(Operation):
+    """
+    Simple operation to convert function positional arguments to a list
+    """
+    def action(self, *args):
+        return args

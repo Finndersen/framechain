@@ -3,6 +3,7 @@ from etl_framework.operations.general import Map
 from etl_framework.exceptions import ETLConfigurationError
 import pandas as pd
 from etl_framework.operations.pandas.base import ColumnOperation, ConditionallyAppliedOperation
+import itertools
 
 
 class Field(Operation):
@@ -177,14 +178,14 @@ class FillNA(ColumnOperation):
         """
         return column.fillna(self.value)
 
-
-def to_list(*args):
-    return args
+    def description(self):
+        return 'Fill NA columns with: {}'.format(self.value)
 
 
 class MergeRowValues(Operation):
     """
-    Merges values across multiple fields in a Series
+    Merges values across multiple fields in a row Series. Works similar to Series.combine but can operate over more than
+    2 fields
     Define function for merge behavior and filter behavior
 
     merge_function: Function to merge row values. Takes field values as positional args, return single value
@@ -194,13 +195,20 @@ class MergeRowValues(Operation):
     Input: Series (row)
     Output: Merged set of values or None
     """
+
+    def to_list(*args):
+        return args
+
+    def merge_lists(*args):
+        return list(itertools.chain(*args))
+
     def __init__(self, *field_names, merge_function=to_list, filter_function=pd.isna):
         """
 
         :param str field_names: Sequence of field names to merge
-        :param merge_function: Function to merge row values. Takes field values as positional args, return single value
+        :param func merge_function: Function to merge row values. Takes field values as positional args, return single value
                 Merges values into list by default
-        :param filter_function: Filter function to ignore field values, takes field value and returns False if value
+        :param func filter_function: Filter function to ignore field values, takes field value and returns False if value
         should be ignored. Ignores null values by default
         """
         if len(field_names) < 2:
@@ -215,4 +223,8 @@ class MergeRowValues(Operation):
         if not values:
             return None
         return self.merge_function(*values)
+
+    def description(self):
+        return 'Merge [{}] row values using function: "{}"'.format(', '.join(self.field_names),
+                                                                   self.merge_function)
 

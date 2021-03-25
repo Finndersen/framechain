@@ -5,6 +5,8 @@ from etl_framework.operations.base import CompoundOperation
 from .base import DataframeOperation
 import logging
 from etl_framework.utils import validate_callable
+import pandas as pd
+import itertools
 
 log = logging.getLogger(__name__)
 
@@ -152,7 +154,7 @@ class Explode(DataframeOperation):
         """
 
         :param str column: Column to apply explode on
-        :param bool reset_index: Whether to reset index after exploding (removes duplicate values)
+        :param bool reset_index: Whether to reset index after exploding (removes duplicate index values)
         """
         self.column = column
         self.reset_index = reset_index
@@ -166,3 +168,33 @@ class Explode(DataframeOperation):
 
     def description(self):
         return 'Explode on field: "{}"'.format(self.column)
+
+
+class Combine(DataframeOperation):
+    """
+    Combine the Series and other using func to perform elementwise selection for combined Series
+    fill_value is assumed when value is missing at some index from one of the two objects being combined.
+    the provided combine function can be constructed using chained Operations to allow for more complex filtering /
+    conditional logic etc.
+    """
+
+    def __init__(self, column1_name, column2_name, func, fill_value=None):
+        """
+
+        :param str column1_name: First field to combine
+        :param str column2_name: Second field to combine
+        :param func: Function that takes two scalars as inputs and returns a combined element.
+        :param fill_value:
+        """
+        self.column1_name = column1_name
+        self.column2_name = column2_name
+        self.func = func
+        self.fill_value = fill_value
+
+    def action(self, dataframe):
+        return dataframe[self.column1_name].combine(dataframe[self.column2_name],
+                                                    self.func,
+                                                    fill_value=self.fill_value)
+
+    def description(self):
+        return 'Combine "{}" and "{}" using: {}'.format(self.column1_name, self.column2_name, self.func)

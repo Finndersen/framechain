@@ -5,6 +5,7 @@ import pandas as pd
 from pandas.core.dtypes.common import is_datetime64_any_dtype
 
 from etl_framework.exceptions import ChangedDataTypError, ETLConfigurationError
+from etl_framework.operations import CompoundOperation
 from etl_framework.operations.base import WrappingTypeTranslatorMixin
 from etl_framework.operations.pandas import Field, IsNull
 from etl_framework.operations.pandas.base import ConditionallyAppliedOperation
@@ -127,3 +128,30 @@ class ConvertColumn(SetColumn):
     def description(self):
         return 'Convert field "{}" using transform: {} with condition: {}'.format(self.field, self.operation,
                                                                                   self.condition)
+
+
+class SetField(CompoundOperation):
+    """
+    Sets a value of a row field, and returns the row
+    Similar to SetColumn but works on a row Series
+    Should be used within an Apply() wrapper (better than using multiple instances of SetColumn with Apply(), since
+    Apply() is expensive)
+    """
+    def __init__(self, field, transform):
+        """
+        :param str field: Name of column to populate output values in
+        :param callable transform: Callable which either takes Series and returns a single value to set on the field
+        """
+        self.transform = transform
+        self.field = field
+        super().__init__(transform)
+
+    def action(self, row):
+        row[self.field] = self.transform(row)
+        return row
+
+    def short_description(self):
+        return 'Set field "{}"'.format(self.field)
+
+    def description(self):
+        return 'Set field "{}" value using transform: {}'.format(self.field, self.transform)
