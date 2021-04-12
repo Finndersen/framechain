@@ -244,6 +244,15 @@ class DatetimeToString(ColumnOperation):
     def description(self):
         return 'DatetimeToString format: "{}"'.format(self.format)
 
+
+class TimedeltaToSeconds(ColumnOperation):
+    """
+    Convert a Timedelta column to a total number of seconds float column
+    """
+    def action(self, timedelta_column):
+        return timedelta_column.dt.total_seconds()
+
+
 # class DateAndTimeToDatetime(object):
 #     """
 #     Create pandas datetime by joining Date and Time fields

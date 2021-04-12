@@ -1,7 +1,8 @@
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
 from etl_framework.operations import If
-from .basic import AsType
+from .conversions import AsType
+from etl_framework.operations.pandas import FillNA
 from etl_framework.operations.pandas.base import ColumnOperation
 import numpy as np
 
@@ -19,15 +20,20 @@ class ToNumeric(ColumnOperation):
     """
     changes_type = True
 
-    def __init__(self, downcast='integer'):
+    def __init__(self, downcast='integer', errors='raise'):
         """
 
         :param str downcast: Downcast type. integer, signed, unsigned or float
+        :param str errors: Error handling behaviour. {‘ignore’, ‘raise’, ‘coerce’}
+        If ‘raise’, then invalid parsing will raise an exception.
+        If ‘coerce’, then invalid parsing will be set as NaN.
+        If ‘ignore’, then invalid parsing will return the input.
         """
         self.downcast = downcast
+        self.errors = errors
 
     def action(self, column):
-        return pd.to_numeric(column, downcast=self.downcast)
+        return pd.to_numeric(column, downcast=self.downcast, errors=self.errors)
 
 
 class ToInteger(ColumnOperation):
@@ -40,16 +46,20 @@ class ToInteger(ColumnOperation):
     """
     changes_type = True
 
-    def __init__(self, large=False):
+    def __init__(self, large=False, ignore_errors=False):
         """
 
         :param bool large: Whether to convert to 64 bit integer (True) or 32 bit (False)
+        :param bool ignore_errors: Whether to ignore casting errors
         """
         int_type = 'Int64' if large else 'Int32'
         self.converter = If(lambda s: not s.isnull().all(),
                             If(lambda s: is_numeric_dtype(s.dtype),
-                               AsType(int_type),                    # Float or other numeric to nullable int
-                               ToNumeric() >> AsType(int_type)))    # First convert non-numeric to numeric
+                               # Float or other numeric to nullable int
+                               AsType(int_type, ignore_errors=ignore_errors),
+                               # First convert non-numeric to numeric
+                               ToNumeric(errors='coerce' if ignore_errors else 'raise') >> AsType(int_type,
+                                                                                                  ignore_errors=ignore_errors)))
 
     def action(self, column):
         return self.converter(column)

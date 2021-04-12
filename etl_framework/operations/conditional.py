@@ -13,7 +13,7 @@ class In(Operation):
 
         :param collection: Collection of values or object to test if value is included in
         """
-        self.collection = collection
+        self.collection = set(collection)
 
     def action(self, value):
         return value in self.collection
@@ -70,3 +70,21 @@ class StringIsNumeric(Operation):
     """
     def action(self, value):
         return value.isnumeric()
+
+
+class IsInstance(Operation):
+    """
+    Check if value is a particular type
+    """
+    def __init__(self, instance_type):
+        """
+
+        :param instance_type:
+        """
+        self.instance_type = instance_type
+
+    def action(self, value):
+        return isinstance(value, self.instance_type)
+
+    def description(self):
+        return 'IsInstance: "{}"'.format(self.instance_type)

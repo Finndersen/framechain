@@ -9,7 +9,7 @@ class RegexExtract(Operation):
     def __init__(self, pattern, **flags):
         """
 
-        :param str pattern: Regex pattern to match on
+        :param str or re.pattern pattern: Regex pattern to match on
         :param flags: Extra flags for regex library
         """
         if isinstance(pattern, str):

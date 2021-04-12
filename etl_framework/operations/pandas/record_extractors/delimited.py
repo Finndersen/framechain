@@ -52,7 +52,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         elif isinstance(file_data, bytes):
             # Convert bytes to text and Create reader object for string data
             file_data = (BytesToString() >> TextReader())(file_data)
-        elif not hasattr(file_data, 'open'):
+        elif not hasattr(file_data, 'read'):
             raise ValueError('Input file data should be str, bytes or reader object, not {}'.format(type(file_data)))
 
         # If file has headers, use_columns is list of field names, otherwise list of field positions

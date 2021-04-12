@@ -3,25 +3,6 @@ from etl_framework.operations.base import Operation, CompoundOperation
 from etl_framework.utils import Memoized, validate_callable
 
 
-class IfNotNone(CompoundOperation):
-    """
-    Only runs wrapped operation on input value if it is not none
-    """
-    def __init__(self, operation, none_value=None):
-        self.operation = operation
-        self.none_value = none_value
-        super().__init__(self.operation)
-
-    def action(self, value):
-        if value == self.none_value:
-            return value
-        else:
-            return self.operation(value)
-
-    def description(self):
-        return '{} if value is not {}'.format(self.operation, self.none_value)
-
-
 class Cached(CompoundOperation):
     """
     Transform wrapper which enables caching of output values
@@ -86,6 +67,25 @@ class MapArguments(CompoundOperation):
     def description(self):
         return '({}) with arguments: {}'.format(self.operation,
                                                 ', '.join(['{}=({})'.format(key,val) for key,val in self.arg_mapping.items()]))
+
+
+class Not(CompoundOperation):
+    """
+    Performs Not operator.
+    """
+    def __init__(self, operation):
+        """
+
+        :param operation: Operation to wrap and return NOT result of.
+        """
+        self.operation = operation
+        super().__init__(operation)
+
+    def action(self, *args, **kwargs):
+        return not self.operation(*args, **kwargs)
+
+    def description(self):
+        return 'NOT ({})'.format(self.operation)
 
 
 class DynamicallyConfiguredOperation(Operation):

@@ -3,6 +3,35 @@ from etl_framework.operations.transforms.string import RegexExtract
 import re
 
 
+class StringColumnSplit(ColumnOperation):
+    """
+    Perform vectorised string split
+    Splits string column into list of values
+    If expand=True, returns Dataframe with columns of values
+    """
+    def __init__(self, pat=None, n=-1, expand=False, right=False):
+        """
+        :param str pat: String or regular expression to split on. If not specified, split on whitespace.
+        :param int n:
+        :param bool expand:
+        :param bool right: Whether to split on right side
+        """
+        self.pat = pat
+        self.n = n
+        self.expand = expand
+        self.right = right
+
+    def action(self, string_column):
+        if self.right:
+            return string_column.str.rsplit(self.pat, n=self.n, expand=self.expand)
+        else:
+            return string_column.str.split(self.pat, n=self.n, expand=self.expand)
+
+    def description(self):
+        return '{} split string column on "{}"'.format('Right' if self.right else 'Left',
+                                                       'whitespace' if self.pat is None else self.pat)
+
+
 class Replace(ColumnOperation):
     """Perform vectorised string replacement"""
 
@@ -10,7 +39,8 @@ class Replace(ColumnOperation):
         """
 
         :param str or compiled regex pattern: Character sequence or regex pattern to replace
-        :param str or callable replace: Replacement string or a callable. The callable is passed the regex match object and must return a replacement string to be used
+        :param str or callable replace: Replacement string or a callable. The callable is passed the regex match object
+        and must return a replacement string to be used
         """
         self.pattern = pattern
         self.replace = replace
@@ -98,3 +128,18 @@ class StringColumnJoin(ColumnOperation):
 
     def description(self):
         return 'Join strings with: "{}"'.format(self.delimiter)
+
+
+class BytesColumnToString(ColumnOperation):
+    """
+    Decode column of bytes values into string
+    """
+    def __init__(self, encoding='utf-8'):
+        """
+
+        :param str encoding:
+        """
+        self.encoding = encoding
+
+    def action(self, bytes_column):
+        return bytes_column.str.decode(self.encoding)

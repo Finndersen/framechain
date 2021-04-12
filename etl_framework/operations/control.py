@@ -1,11 +1,11 @@
 """
 Operations to control flow of pipeline
 """
-import copy, logging
+import copy
+import logging
 
 from etl_framework.operations import CompoundOperation, Pass, Operation
 from etl_framework.utils import randomstring, LogDuration
-
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +38,8 @@ class If(CompoundOperation):
             return self.false_operation(value)
 
     def description(self):
-        return 'If {}, \nThen: ({}), \nElse: ({})'.format(str(self.condition), self.true_operation, self.false_operation)
+        return 'If {}, \nThen: ({}), \nElse: ({})'.format(str(self.condition), self.true_operation,
+                                                          self.false_operation)
 
     def short_description(self):
         return 'If {}'.format(str(self.condition))
@@ -67,6 +68,7 @@ class SwitchCase(CompoundOperation):
     Operation which works like a Switch-Case statement.
     Contains a mapping of values to operations to run if input is equal to that value
     """
+
     def __init__(self, key_operation, case_mapping, default=None):
         """
         :param Operation key_operation: Transform to perform on input value to get mapping key
@@ -116,6 +118,7 @@ class Fork(CompoundOperation):
     Each chain should end in an Output Generator because it can be cumbersome to aggregate or do further
     processing on the output sequence from this operation
     """
+
     def __init__(self, *fork_operations):
         """
 
@@ -151,15 +154,15 @@ class Fork(CompoundOperation):
         'transparent'
         :return:
         """
-        profile_data = Operation.add_profile_data(self, profile_data, caller=caller,
-                                                  add_self_data=add_self_data)
+        Operation.add_profile_data(self, profile_data, caller=caller,
+                                   add_self_data=add_self_data)
         for operation in self.wrapped_operations:
-            profile_data = operation.add_profile_data(profile_data, self if add_self_data else caller,
-                                                      add_self_data=True)
+            operation.add_profile_data(profile_data, self if add_self_data else caller,
+                                       add_self_data=True)
         return profile_data
 
     def add_to_graph(self, graph):
-        from pydot import Edge, Node, Cluster
+        from pydot import Edge, Node
         # Create end node for Fork
         output_node = Node(name=randomstring(10), label='List of results')
         graph.add_node(output_node)
@@ -179,7 +182,8 @@ class Fork(CompoundOperation):
 
     def description(self):
         return 'Fork into {} chains: {}'.format(len(self.fork_operations), '\n'.join('#{}: ({})'.format(i, operation)
-                                                       for i, operation in enumerate(self.fork_operations)))
+                                                                                     for i, operation in
+                                                                                     enumerate(self.fork_operations)))
 
 
 class Collect(Operation):
@@ -196,6 +200,7 @@ class Iterate(Operation):
     Iterates over provided iterator and execute provided operation on each element
     Returns a generator of result of each item after being transformed by operation
     """
+
     def __init__(self, operation):
         """
 

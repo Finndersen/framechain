@@ -1,11 +1,8 @@
-from etl_framework.operations.pandas.transforms import StringColumnToDatetime
-from etl_framework.operations.pandas.general import ColumnMap
-from etl_framework.operations.transforms.binary import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, BytesToDateString, BytesToTime, BytesToTimeString, \
-    BytesToHexString
-from etl_framework.operations.transforms import TBCDBytesToString, BinaryToIPv4Address, BinaryToIPv6Address, \
-    BCDTimestampToString
+from etl_framework.operations.pandas import StringColumnToDatetime, ColumnMap, BytesColumnToString
+from etl_framework.operations.transforms import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, BytesToDateString, BytesToTime, BytesToTimeString, \
+    BytesToHexString, TBCDBytesToString, BinaryToIPv4Address, BinaryToIPv6Address, BCDTimestampToString
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
-from .field_setters import NoAggregation
+from etl_framework.exceptions import ETLFieldError
 
 
 IGNORE_NOTHING = object()
@@ -15,21 +12,23 @@ class ASN1BERField(InputField):
     """
     Class used to define a BER ASN1 field
     """
-    def __init__(self, name, asn_ids, setter=None, ignore_value=IGNORE_NOTHING, **kwargs):
+    def __init__(self, name, asn_ids, aggregator=None, ignore_value=IGNORE_NOTHING, **kwargs):
         """
 
         :param str name: name of ASN1 field
         :param dict/str asn_ids: Either:
             - dictionary with keys of recordtype name, and values of str ASN1 id of field within recordtype
             - string of ASN1 Id of field (hyphen-seperated field IDs, applies to all record types)
-        :param BaseFieldSetter setter: Object which defines logic for how field values are set and aggregated when there
+        :param BaseFieldSetter aggregator: Object which defines logic for how field values are set and aggregated when there
         are multiple (for when field occurs multiple times, e.g. in SEQUENCE OF)
         :param ignore_value: If converted field value is equal to this, field value will not be set
         """
         self.asn_ids = asn_ids
-        self.setter = setter or NoAggregation()
+        self.aggregator = aggregator
         self.ignore_value = ignore_value
         super().__init__(name, **kwargs)
+        if aggregator and self.column_converter:
+            raise ETLFieldError('Cannot specify aggregator on field with column converter')
 
     def get_asn_id_for_record_type(self, record_type):
         """
@@ -53,9 +52,12 @@ class ASN1BERField(InputField):
         :return:
         """
         converted_value = self.convert_value(raw_value)
-        # Set field value using aggregator
+        # Set field value value in record
         if converted_value != self.ignore_value:
-            self.setter.add_to_record(record, self.name, converted_value)
+            if self.aggregator:
+                self.aggregator.add_to_record(record, self.name, converted_value)
+            else:
+                record[self.name] = converted_value
 
 
 class BooleanField(ASN1BERField):
@@ -90,7 +92,9 @@ class StringField(ASN1BERField):
     """
     String field which decodes byte data to string. Use for IA5String or OCTET STRING if appropriate
     """
+    # Doesnt appear to be much performance difference between using value or column converter
     value_converter = BytesToString()
+    # column_converter = BytesColumnToString()
 
 
 class DateField(ASN1BERField):

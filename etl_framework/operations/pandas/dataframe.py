@@ -149,8 +149,10 @@ class Explode(DataframeOperation):
 
     This adds values and transforms the index so cannot be used on a masked dataframe (cannot be applied conditionally)
     Some operations will not work afterwards unless index is reset (e.g. DeleteRows within a conditional Mask)
+    Note when exploding multiple times, reset_index=True should be used otherwise might get unwanted duplicates
+    TODO: pandas 1.1.0 adds ignore_index which can be used instead of manually resetting
     """
-    def __init__(self, column, reset_index=False):
+    def __init__(self, column, reset_index=True):
         """
 
         :param str column: Column to apply explode on

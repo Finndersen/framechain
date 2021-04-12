@@ -210,14 +210,12 @@ class Filter(Operation):
     Operation which takes sequence of values and filters according to provided function
     Returns list of filtered values
     """
-    def __init__(self, filter_func, invert=False):
+    def __init__(self, filter_func):
         """
 
         :param filter_func: Function to check each value. Returns true for values to be kept
-        :param bool invert: Invert logic (keep values where filter_func returns False)
         """
         self.filter_func = filter_func
-        self.invert = invert
 
     def action(self, values):
         """
@@ -225,13 +223,10 @@ class Filter(Operation):
         :param iterable values:
         :return:
         """
-        if self.invert:
-            return [val for val in values if not self.filter_func(val)]
-        else:
-            return [val for val in values if self.filter_func(val)]
+        return [val for val in values if self.filter_func(val)]
 
     def description(self):
-        return 'Filter values for which "{}" returns {}'.format(self.filter_func, not self.invert)
+        return 'Filter values using function: "{}"'.format(self.filter_func)
 
 
 class ArgsToList(Operation):

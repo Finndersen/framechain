@@ -19,15 +19,16 @@ class AsType(ColumnOperation):
     """Convert type of column"""
     changes_type = True
 
-    def __init__(self, to_type):
+    def __init__(self, to_type, ignore_errors=False):
         """
 
         :param str (numpy type) or python type to_type:
         """
         self.to_type = to_type
+        self.ignore_errors = ignore_errors
 
     def action(self, column):
-        return column.astype(self.to_type)
+        return column.astype(self.to_type, errors='ignore' if self.ignore_errors else 'raise')
 
     def description(self):
         return 'Convert type to {}'.format(self.to_type)

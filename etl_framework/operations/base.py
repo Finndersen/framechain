@@ -216,8 +216,6 @@ class BaseOperation(object):
                 caller_dict = {caller.pstat_id: caller.get_execution_stats()} if caller else {}
                 profile_data[node_id] = node_stats + [caller_dict]
 
-        return profile_data
-
     def get_execution_stats(self):
         """
         Get execution stats for use in profiling. List with elements:
@@ -338,9 +336,9 @@ class OperatorWrapperMixin(BaseOperation):
         'transparent'
         :return:
         """
-        profile_data = super().add_profile_data(profile_data, caller=caller, add_self_data=add_self_data)
+        super().add_profile_data(profile_data, caller=caller, add_self_data=add_self_data)
         for operation in self.wrapped_operations:
-            profile_data = operation.add_profile_data(profile_data, self if add_self_data else caller)
+            operation.add_profile_data(profile_data, self if add_self_data else caller)
         return profile_data
 
     def get_execute_time(self):
@@ -440,7 +438,7 @@ class OperationsWithOperator(CompoundOperation):
 
 class SingleOperandOperator(CompoundOperation):
     """
-    Base class for operators which operate on single operand (NOT, IN, SLICE)
+    Base class for operators which operate on single operand (INVERT, NEG, SLICE)
     Inherits type translations from single contained operation
     """
     operator_str = None
@@ -454,7 +452,7 @@ class SingleOperandOperator(CompoundOperation):
 
 
 class INVERT(SingleOperandOperator):
-    """Invert operator"""
+    """Bitwise Invert operator (not for boolean)"""
     operator_str = '~'
 
     def action(self, *args, **kwargs):
