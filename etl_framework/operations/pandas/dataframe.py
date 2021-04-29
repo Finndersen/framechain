@@ -1,12 +1,11 @@
 """
 Primary Pandas operations which take Dataframe and return Dataframe
 """
-from etl_framework.operations.base import CompoundOperation
-from .base import DataframeOperation
 import logging
+
+from etl_framework.operations.base import CompoundOperation
 from etl_framework.utils import validate_callable
-import pandas as pd
-import itertools
+from .base import DataframeOperation
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ class DeleteRows(CompoundOperation, DataframeOperation):
 
     def action(self, dataframe):
         # Get masked/filtered DF
-        filtered_df = dataframe.loc[~self.condition(dataframe)]
+        filtered_df = dataframe.loc[~self.run_wrapped_operation(self.condition, dataframe)]
         log.debug('Filtered out {} rows ({} remaining)'.format(len(dataframe.index) - len(filtered_df.index),
                                                                len(filtered_df.index)))
         # Return copy so that it is not a slice (which may raise SettingWithCopyWarning)
@@ -152,6 +151,7 @@ class Explode(DataframeOperation):
     Note when exploding multiple times, reset_index=True should be used otherwise might get unwanted duplicates
     TODO: pandas 1.1.0 adds ignore_index which can be used instead of manually resetting
     """
+
     def __init__(self, column, reset_index=True):
         """
 
@@ -174,7 +174,7 @@ class Explode(DataframeOperation):
 
 class Combine(DataframeOperation):
     """
-    Combine the Series and other using func to perform elementwise selection for combined Series
+    Combine values from two Series using func to perform elementwise selection for combined Series
     fill_value is assumed when value is missing at some index from one of the two objects being combined.
     the provided combine function can be constructed using chained Operations to allow for more complex filtering /
     conditional logic etc.
@@ -202,10 +202,32 @@ class Combine(DataframeOperation):
         return 'Combine "{}" and "{}" using: {}'.format(self.column1_name, self.column2_name, self.func)
 
 
+class CombineFirst(DataframeOperation):
+    """
+    Combine values of two Series using first non-NaN value
+    """
+
+    def __init__(self, first_column, second_column):
+        """
+
+        :param str first_column: First field to combine
+        :param str second_column: Second field to combine
+        """
+        self.first_column = first_column
+        self.second_column = second_column
+
+    def action(self, dataframe):
+        return dataframe[self.first_column].combine_first(dataframe[self.second_column])
+
+    def description(self):
+        return 'Combine "{}" and "{}" using first non-NaN value'.format(self.first_column, self.second_column)
+
+
 class SetColumnOrder(DataframeOperation):
     """
     Set column order or select subset of columns from dataframe
     """
+
     def __init__(self, columns):
         """
 

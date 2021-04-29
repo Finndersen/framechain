@@ -18,7 +18,7 @@ class SubGraph(CompoundOperation):
         super().__init__(operation)
 
     def action(self, *args, **kwargs):
-        return self.operation(*args, **kwargs)
+        return self.run_wrapped_operation(self.operation, *args, **kwargs)
 
     def description(self):
         return self.operation.description()

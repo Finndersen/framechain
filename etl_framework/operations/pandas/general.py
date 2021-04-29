@@ -74,9 +74,9 @@ class Apply(CompoundOperation):
         :return:
         """
         if isinstance(vector, pd.DataFrame):
-            return vector.apply(lambda row: self.operation(row), axis=1, result_type='reduce')
+            return vector.apply(lambda row: self.run_wrapped_operation(self.operation, row), axis=1, result_type='reduce')
         elif isinstance(vector, pd.Series):
-            return vector.apply(lambda value: self.operation(value))
+            return vector.apply(lambda value: self.run_wrapped_operation(self.operation, value))
         else:
             self.error(TypeError, 'Input should be DataFrame or Series')
 
@@ -103,12 +103,14 @@ class Mask(ConditionallyAppliedOperation):
         super().__init__(operation, condition=condition)
 
     def action(self, df_or_column):
+        # Make copy to avoid making changes to original Series or DF (deep copy if Series)
+        df_or_column = df_or_column.copy(deep=isinstance(df_or_column, pd.Series))
         # Get mask using condition
-        mask = self.condition(df_or_column)
+        mask = self.run_wrapped_operation(self.condition, df_or_column)
         if mask is not None and not pd.api.types.is_bool_dtype(mask):
             self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
         # Provide masked data to operation. Make copy to avoid SettingWithCopyWarning
-        transformed_values = self.operation(df_or_column.loc[mask].copy())
+        transformed_values = self.run_wrapped_operation(self.operation, df_or_column.loc[mask].copy())
         # Integrate values back into original Dataframe or column
         df_or_column.loc[mask] = transformed_values
 

@@ -32,10 +32,10 @@ class If(CompoundOperation):
         super().__init__(self.false_operation, self.true_operation, self.condition)
 
     def action(self, value):
-        if self.condition(value):
-            return self.true_operation(value)
+        if self.run_wrapped_operation(self.condition, value):
+            return self.run_wrapped_operation(self.true_operation, value)
         else:
-            return self.false_operation(value)
+            return self.run_wrapped_operation(self.false_operation, value)
 
     def description(self):
         return 'If {}, \nThen: ({}), \nElse: ({})'.format(str(self.condition), self.true_operation,
@@ -81,11 +81,11 @@ class SwitchCase(CompoundOperation):
         super().__init__(*list(case_mapping.values()), default, key_operation)
 
     def action(self, value):
-        case_value = self.key_operation(value)
+        case_value = self.run_wrapped_operation(self.key_operation, value)
         if case_value in self.case_mapping:
-            return self.case_mapping[case_value](value)
+            return self.run_wrapped_operation(self.case_mapping[case_value], value)
         else:
-            return self.default(value)
+            return self.run_wrapped_operation(self.default, value)
 
     def short_description(self):
         return 'Switch on value of: \n"{}"'.format(self.key_operation)
@@ -137,11 +137,11 @@ class Fork(CompoundOperation):
         """
         outputs = []
 
-        # Execute chain of operations (TODO: initialise new Pipeline instance to handle this?)
+        # Execute chain of operations
         for i, operation in enumerate(self.fork_operations):
             value = copy.deepcopy(input_val)
             with LogDuration(log, 'Running fork #{} operation: {}'.format(i, operation)):
-                value = operation(value)
+                value = self.run_wrapped_operation(operation, value)
             outputs.append(value)
         return outputs
 

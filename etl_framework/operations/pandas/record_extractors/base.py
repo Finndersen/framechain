@@ -4,6 +4,7 @@ from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
 from etl_framework.operations.transforms import StringToDatetime
 from etl_framework.operations.pandas.transforms import ToInteger, SetColumnTimezone, StringColumnToDatetime
 import logging
+from time import perf_counter
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class BaseDataFrameGenerator(CompoundOperation):
 
         :param input_data: ETL input data. Type depends on requirements of specific Record Extractor
         """
-        with LogDuration(log, 'Extracting records from input...'):
+        with LogDuration(log, 'Extracting records from input...'):  # TODO: Remove logging and add dedicated operation for logging
             dataframe = self.create_dataframe(input_data)
             #  Add any missing fields as Null column
             for field in self.fields:
@@ -65,6 +66,18 @@ class BaseDataFrameGenerator(CompoundOperation):
         :return: pd.DataFrame
         """
         raise NotImplementedError()
+
+    def get_execute_time(self):
+        """
+        Get of just this operation (not including any wrapped sub-operations)
+        Subtract both Field value convert and column convert times
+        Assumes Field instances are not re-used elsewhere...
+        :return:
+        """
+        exec_time = self.get_cumulative_time()
+        for field in self.fields:
+            exec_time -= field.get_cumulative_time()
+        return exec_time
 
 
 class InputField(OperatorWrapperMixin, BaseOperation):
@@ -92,20 +105,22 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         super().__init__(*[converter for converter in [self.column_converter, self.value_converter]
                           if converter is not None])
 
-    def action(self, column):
+    # def action(self, column):
+
+    def convert_column(self, column):
         """
         perform vectorised value conversion for field
         :param column: Pandas series containing raw field values
         :return:
         """
         # Perform vectorised value conversion
+        start_time = perf_counter()
         if self.column_converter:
-            return self.column_converter(column)
-        else:
-            return column
+            column = self.run_wrapped_operation(self.column_converter, column)
 
-    def convert_column(self, column):
-        return self(column)
+        self._cumulative_time += perf_counter() - start_time
+        self.call_count += 1
+        return column
 
     def convert_value(self, value):
         """
@@ -113,21 +128,24 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         :param value:
         :return:
         """
+
+
         if value in self.EMPTY_VALUES:
             value = None
 
         if value is None:
             if self.mandatory:
                 raise MandatoryFieldError('Mandatory field: {} has empty value'.format(self))
-            else:
-                return None
-
-        self.validate_raw_value(value)
-
-        if self.value_converter:
-            return self.value_converter(value)
         else:
-            return value
+            start_time = perf_counter()
+
+            self.validate_raw_value(value)
+            if self.value_converter:
+                value = self.run_wrapped_operation(self.value_converter, value)
+
+            self._cumulative_time += perf_counter() - start_time
+            self.call_count += 1
+        return value
 
     def validate_raw_value(self, value):
         """
@@ -136,13 +154,6 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         :return:
         """
         pass
-
-    def get_culumative_time(self):
-        # Add execution time of value converter
-        cumtime = super().get_culumative_time()
-        if self.value_converter:
-            cumtime += self.value_converter.get_culumative_time()
-        return cumtime
 
     def description(self):
         return '{}: "{}"'.format(type(self).__name__, self.name)

@@ -30,4 +30,5 @@ class RegexExtract(Operation):
             return match.group(1)
 
     def description(self):
-        return 'RegexExtract with pattern: "{}"'.format(self.compiled_pattern.pattern)
+        return '{} with pattern: "{}"'.format(type(self).__name__,
+                                              self.compiled_pattern.pattern)

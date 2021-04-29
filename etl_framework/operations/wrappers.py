@@ -1,4 +1,3 @@
-from etl_framework.exceptions import ETLConfigurationError
 from etl_framework.operations.base import Operation, CompoundOperation
 from etl_framework.utils import Memoized, validate_callable
 
@@ -26,7 +25,7 @@ class Cached(CompoundOperation):
         :param kwargs: extra transformation arguments potentially supplied from WithArgs or MapFields
         :return:
         """
-        return self.operation(*args, **kwargs)
+        return self.run_wrapped_operation(self.operation, *args, **kwargs)
 
     def description(self):
         return '({}) with caching'.format(self.operation)
@@ -61,8 +60,8 @@ class MapArguments(CompoundOperation):
         :param input_val: Value which will be passed to arg_mappings to generate input arguments for operation
         :return:
         """
-        return self.operation(**{arg_name: arg_operation(*args, **kwargs)
-                                 for arg_name, arg_operation in self.arg_mapping.items()})
+        return self.run_wrapped_operation(self.operation, **{arg_name: arg_operation(*args, **kwargs)
+                                                             for arg_name, arg_operation in self.arg_mapping.items()})
 
     def description(self):
         return '({}) with arguments: {}'.format(self.operation,
@@ -82,7 +81,7 @@ class Not(CompoundOperation):
         super().__init__(operation)
 
     def action(self, *args, **kwargs):
-        return not self.operation(*args, **kwargs)
+        return not self.run_wrapped_operation(self.operation, *args, **kwargs)
 
     def description(self):
         return 'NOT ({})'.format(self.operation)

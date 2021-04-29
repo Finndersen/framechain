@@ -2,7 +2,8 @@ from etl_framework.operations.types import TypeTranslations
 from etl_framework.utils import validate_callable, randomstring
 import pandas as pd
 import sys
-import operator, logging, time, marshal
+import operator, logging, marshal, tempfile
+from time import perf_counter, sleep
 
 log = logging.getLogger(__name__)
 
@@ -134,7 +135,7 @@ class BaseOperation(object):
     # Mapping of valid input types to valid output types (for when this class is called)
     # calling_translations = None
     call_count = 0
-    _culumative_time = 0
+    _cumulative_time = 0
 
     def error(self, exc_type, message):
         """
@@ -148,10 +149,10 @@ class BaseOperation(object):
     def __call__(self, *args, **kwargs):
         # Record execution time, etc..
         try:
-            start_time = time.perf_counter()
+            start_time = perf_counter()
             result = self.action(*args, **kwargs)
             self.call_count += 1
-            self._culumative_time += time.perf_counter() - start_time
+            self._cumulative_time += perf_counter() - start_time
             return result
         except Exception as exc:
             exc_result = self.handle_exception(exc, *args, **kwargs)
@@ -184,11 +185,14 @@ class BaseOperation(object):
         result = self(input_val)
 
         profile_data = self.get_profile_data()
-        with open('pstat_data', 'wb') as f:
+        # Get temporary filename
+        filename = tempfile.NamedTemporaryFile().name
+
+        with open(filename, 'wb') as f:
             marshal.dump(profile_data, f)
 
-        sv = open_snakeviz_and_display_in_notebook('pstat_data')
-        time.sleep(2)
+        sv = open_snakeviz_and_display_in_notebook(filename)
+        sleep(2)
         sv.terminate()
         return result
 
@@ -198,22 +202,33 @@ class BaseOperation(object):
         return profile_data
 
     def add_profile_data(self, profile_data, caller=None, add_self_data=True):
+        """
+
+        :param dict profile_data: Current profile data dictionary
+        :param Operation caller: parent calling operation
+        :param bool add_self_data:
+        :return:
+        """
         if add_self_data:
-            node_id = self.pstat_id
-            node_stats = self.get_execution_stats()
             # Dont add to profile stats if it is not called
-            if not node_stats[0]:
+            if not self.call_count:
                 return
 
+            node_id = self.pstat_id
+            node_stats = self.get_execution_stats()
+
             if node_id in profile_data:
-                # Add to existing profile data for this operation (can be multiple instances of same operation)
+                # Add to existing caller details
                 if caller:
-                    profile_data[node_id][4][caller.pstat_id] = caller.get_execution_stats()
+                    # TODO: need to somehow get this operation's execute stats for caller..
+                    profile_data[node_id][4][caller.pstat_id] = [0,0,0,0]
+
+                # Add to existing profile data for this operation (can be multiple instances of same operation)
                 for i in range(4):
                     profile_data[node_id][i] += node_stats[i]
             else:
                 # Create new entry
-                caller_dict = {caller.pstat_id: caller.get_execution_stats()} if caller else {}
+                caller_dict = {caller.pstat_id: [0,0,0,0]} if caller else {}
                 profile_data[node_id] = node_stats + [caller_dict]
 
     def get_execution_stats(self):
@@ -229,21 +244,21 @@ class BaseOperation(object):
 
         :return:
         """
-        return [self.call_count, self.call_count, self.get_execute_time(), self.get_culumative_time()]
+        return [self.call_count, self.call_count, self.get_execute_time(), self.get_cumulative_time()]
 
-    def get_culumative_time(self):
+    def get_cumulative_time(self):
         """
         Get total execution time of this operation (including wrapped sub-operations)
         :return:
         """
-        return self._culumative_time
+        return self._cumulative_time
 
     def get_execute_time(self):
         """
         Get of just this operation (not including any wrapped sub-operations)
         :return:
         """
-        return self._culumative_time
+        return self._cumulative_time
 
     @property
     def pstat_id(self):
@@ -252,13 +267,11 @@ class BaseOperation(object):
         (module_name, line_number, function_name)
         :return:
         """
-        desc = self.description()
-        if len(desc) > 180:
-            desc = self.short_description()
+        desc = self.short_description()
         return ('', id(self), desc)
 
     def clear_profile_stats(self):
-        self._culumative_time = 0
+        self._cumulative_time = 0
         self.call_count = 0
 
     def show_graph(self):
@@ -299,7 +312,7 @@ class BaseOperation(object):
         can get unweildy
         :return:
         """
-        return self.description()
+        return self.description()[:180]
 
     def description(self):
         return type(self).__name__
@@ -319,6 +332,8 @@ class OperatorWrapperMixin(BaseOperation):
     """
     Mixin for operations which wrap other operations
     Handles profiling of wrapped operations
+    Inherits from BaseOperation so it does not have Operator overloads,
+    and can be used with Field operations which do not support operators
     """
     def __init__(self, *wrapped_operations):
         """
@@ -326,6 +341,20 @@ class OperatorWrapperMixin(BaseOperation):
         :param Operation wrapped_operations: operations which are encapsulated within (called by) this one
         """
         self.wrapped_operations = wrapped_operations
+        self._wrapped_execute_time = 0
+
+    def run_wrapped_operation(self, operation, *args, **kwargs):
+        """
+        Run a wrapped operation and record execution time
+        :param operation:
+        :param args:
+        :param kwargs:
+        :return:
+        """
+        start_time = perf_counter()
+        result = operation(*args, **kwargs)
+        self._wrapped_execute_time += perf_counter() - start_time
+        return result
 
     def add_profile_data(self, profile_data, caller=None, add_self_data=True):
         """
@@ -336,19 +365,24 @@ class OperatorWrapperMixin(BaseOperation):
         'transparent'
         :return:
         """
+        # Add profile data for self
         super().add_profile_data(profile_data, caller=caller, add_self_data=add_self_data)
+        # Add profile data for wrapped operations
         for operation in self.wrapped_operations:
             operation.add_profile_data(profile_data, self if add_self_data else caller)
         return profile_data
 
     def get_execute_time(self):
-        tottime = self.get_culumative_time()
-        for operation in self.wrapped_operations:
-            tottime -= operation.get_culumative_time()
-        return tottime
+        """
+        Get of just this operation (not including any wrapped sub-operations)
+        Can't just subtract aggregated wrapped operation cumulative time because operation may be re-used elsewhere
+        :return:
+        """
+        return self.get_cumulative_time() - self._wrapped_execute_time
 
     def clear_profile_stats(self):
         super().clear_profile_stats()
+        self._wrapped_execute_time = 0
         for operation in self.wrapped_operations:
             operation.clear_profile_stats()
 
@@ -417,7 +451,8 @@ class OperationsWithOperator(CompoundOperation):
 
     def action(self, *args, **kwargs):
         # Apply operator on output of two operands
-        return self.OPERATORS[self.operator_str](self.op1(*args, **kwargs), self.op2(*args, **kwargs))
+        return self.OPERATORS[self.operator_str](self.run_wrapped_operation(self.op1, *args, **kwargs),
+                                                 self.run_wrapped_operation(self.op2, *args, **kwargs))
 
     def description(self):
         return '({}) {} ({})'.format(self.op1, self.operator_str, self.op2)
@@ -456,7 +491,7 @@ class INVERT(SingleOperandOperator):
     operator_str = '~'
 
     def action(self, *args, **kwargs):
-        return ~self.operation(*args, **kwargs)
+        return ~self.run_wrapped_operation(self.operation, *args, **kwargs)
 
     def description(self):
         return '~({})'.format(self.operation)
@@ -467,7 +502,7 @@ class NEG(SingleOperandOperator):
     operator_str = '-'
 
     def action(self, *args, **kwargs):
-        return -self.operation(*args, **kwargs)
+        return -self.run_wrapped_operation(self.operation, *args, **kwargs)
 
     def description(self):
         return '-({})'.format(self.operation)
@@ -498,7 +533,7 @@ class SLICE(SingleOperandOperator):
         super().__init__(op)
 
     def action(self, *args, **kwargs):
-        op_result = self.operation(*args, **kwargs)
+        op_result = self.run_wrapped_operation(self.operation, *args, **kwargs)
 
         if self.result_type == 'column':
             # Pandas vectorised string slice
@@ -542,7 +577,7 @@ class THEN(CompoundOperation):
 
     def action(self, *args):
         # Return chained output.
-        return self.op2(self.op1(*args))
+        return self.run_wrapped_operation(self.op2, self.run_wrapped_operation(self.op1, *args))
 
     def add_to_graph(self, graph):
         from pydot import Edge
@@ -639,35 +674,3 @@ class UncallableOperation(object):
     Mixin to make operation not callable
     """
     __call__ = property()
-
-
-class WrappingTypeTranslatorMixin(object):
-    """
-    Mixin to help validate compatability of operation supplied to wrapper
-    Output types of mapper must align with input types of mapped operation
-    """
-    # Translations of input calling types to types passed to wrapped operation
-    wrapping_translations = {}
-
-    def validate_wrapped_operation_compatability(self, wrapped_operation):
-        """
-        Get chained type translation across two operations, with optional input types
-        If translations are not specified, assume operation has full compatability and does no translation
-        :param wrapped_operation: operation whos input will be provided by this wrapping class
-        :return:
-        """
-        # Temporarily disabled. TODO: FIX
-        # wrapped_valid_translations = TypeTranslations.get_for_operation(wrapped_operation)
-        # # Wrapping translations which are compatible with wrapped operation
-        # valid_wrapping_translations = {wrapping_in: wrapped_valid_translations[wrapping_out]
-        #                         for wrapping_in, wrapping_out in self.wrapping_translations.items()
-        #                         if wrapping_out in wrapped_valid_translations}
-        # if  valid_wrapping_translations:
-        #     # Filter valid translations using valid wrapping translations
-        #     self.calling_translations={key: val
-        #                                for key,val in TypeTranslations.get_for_operation(self).items()
-        #                                if key in valid_wrapping_translations}
-        # else:
-        #     # Transform/wrapper not compatible with this wrapper
-        #     raise ETLConfigurationError(
-        #         '{} is not compatible with wrapper: {}'.format(type(wrapped_operation).__name__, type(self).__name__))

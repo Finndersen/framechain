@@ -6,12 +6,11 @@ from pandas.core.dtypes.common import is_datetime64_any_dtype
 
 from etl_framework.exceptions import ChangedDataTypError, ETLConfigurationError
 from etl_framework.operations import CompoundOperation
-from etl_framework.operations.base import WrappingTypeTranslatorMixin
 from etl_framework.operations.pandas import Field, IsNull
 from etl_framework.operations.pandas.base import ConditionallyAppliedOperation
 
 
-class SetColumn(ConditionallyAppliedOperation, WrappingTypeTranslatorMixin):
+class SetColumn(ConditionallyAppliedOperation):
     """
     Set a column/field values using a transformation operation. Creates new column if doesnt already exist in DataFrame
     Can provide a conditional operation which is used to create a mask
@@ -21,8 +20,10 @@ class SetColumn(ConditionallyAppliedOperation, WrappingTypeTranslatorMixin):
     def __init__(self, field, transform, condition=None):
         """
         :param str field: Name of column to populate output values in
-        :param callable transform: Callable which either takes Dataframe or Series and returns Series. Can be result of chaining multiple Transform components togehter
-        :param callable condition: callable which takes dataframe  and returns a boolean series mask. Ideally use sublcass of BaseVectorMask which can be chained with bitwise operators
+        :param callable transform: Callable which either takes Dataframe or Series and returns Series.
+        Can be result of chaining multiple Transform components togehter
+        :param callable condition: callable which takes dataframe  and returns a boolean series mask.
+        Ideally use sublcass of BaseVectorMask which can be chained with bitwise operators
         """
         super().__init__(transform, condition=condition)
         self.field = field
@@ -34,14 +35,16 @@ class SetColumn(ConditionallyAppliedOperation, WrappingTypeTranslatorMixin):
         :param DataFrame dataframe:
         :return:
         """
+        # Make shallow copy so changes arent made to original DF
+        dataframe = dataframe.copy(deep=False)
         # Generate transform mask with condition if appropriate
-        mask = self.condition(dataframe) if self.condition else None
+        mask = self.run_wrapped_operation(self.condition, dataframe) if self.condition else None
         if mask is not None and not pd.api.types.is_bool_dtype(mask):
             self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
         # Get Masked/filtered version of Dataframe
         transform_input = self.get_transform_input(dataframe, mask)
         # Perform transformation on dataframe
-        output_series = self.operation(transform_input)
+        output_series = self.run_wrapped_operation(self.operation, transform_input)
         if not isinstance(output_series, pd.Series):
             self.error(ValueError,
                        'Transform: {} returns: "{}", not return a Series'.format(self.operation, type(output_series)))
@@ -66,7 +69,7 @@ class SetColumn(ConditionallyAppliedOperation, WrappingTypeTranslatorMixin):
         """
         Mask entire dataframe if appropriate
         """
-        return dataframe[mask].copy() if mask is not None else dataframe
+        return dataframe[mask] if mask is not None else dataframe
 
     def short_description(self):
         rep = 'Set field "{}"'.format(self.field)
@@ -147,7 +150,7 @@ class SetField(CompoundOperation):
         super().__init__(transform)
 
     def action(self, row):
-        row[self.field] = self.transform(row)
+        row[self.field] = self.run_wrapped_operation(self.transform, row)
         return row
 
     def short_description(self):
