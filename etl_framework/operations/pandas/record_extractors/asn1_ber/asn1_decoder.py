@@ -225,7 +225,7 @@ class ASN1BERDecoder(object):
             if node.depth == self.recordtype_depth:
                 if node.id in self.target_recordtypes:
                     # Set record type field
-                    record_data[self.RECORDTYPE_FIELD_NAME] = self.target_recordtypes[node.id]
+                    record_data[self.RECORDTYPE_FIELD_NAME] = self.target_recordtypes[node.id].name
                 else:  # Skip irrelevant record type
                     self.skip_node(self.record_node)
                     raise SkipRecordError()
