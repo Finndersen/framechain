@@ -200,3 +200,21 @@ class Combine(DataframeOperation):
 
     def description(self):
         return 'Combine "{}" and "{}" using: {}'.format(self.column1_name, self.column2_name, self.func)
+
+
+class SetColumnOrder(DataframeOperation):
+    """
+    Set column order or select subset of columns from dataframe
+    """
+    def __init__(self, columns):
+        """
+
+        :param list columns: List of column names
+        """
+        self.columns = columns
+
+    def action(self, dataframe):
+        return dataframe[self.columns]
+
+    def description(self):
+        return "Set column order: {}".format(self.columns)

@@ -42,6 +42,9 @@ class ASN1Node(object):
 
 
 class ASN1BERDecoder(object):
+    RECORDTYPE_FIELD_NAME = 'asn1_record_type'
+    RECORDNUMBER_FIELD_NAME = 'asn1_record_number'
+
     def __init__(self, record_types, fields, header_trailer_lengths):
         """
         Initialise ASN1 Decoder class with configuration
@@ -60,14 +63,25 @@ class ASN1BERDecoder(object):
                 for record_type_name in field.asn_ids:
                     if record_type_name not in record_type_names:
                         raise exceptions.ETLConfigurationError('Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
+
             # Validate no duplicate field names
             if field.name in field_names:
                 raise ValueError('Field with name: "{}" has already been defined'.format(field.name))
-            else:
-                field_names.add(field.name)
 
-        self.asn_data = self.current_record_type = self.record_node = None
-        self.asn_index = 0
+            # Validate no field has same name as recordtype field name
+            if field.name == self.RECORDTYPE_FIELD_NAME:
+                raise exceptions.ETLConfigurationError('ASN1 record schema defined with field name same as recordtype field name: {}'.format(
+                               self.RECORDTYPE_FIELD_NAME))
+
+            # Validate no field has same name as recordtype field name
+            if field.name == self.RECORDNUMBER_FIELD_NAME:
+                raise exceptions.ETLConfigurationError('ASN1 record schema defined with field name same as recordtype number name: {}'.format(
+                               self.RECORDNUMBER_FIELD_NAME))
+
+            field_names.add(field.name)
+
+        self.asn_data = self.record_node = None
+        self.asn_index = self.record_number = 0
         self.header_trailer_lengths = header_trailer_lengths or {}
         # Validate record types have same ASN ID depth
         assert all([record_type.id_depth == record_types[0].id_depth for record_type in
@@ -95,8 +109,8 @@ class ASN1BERDecoder(object):
         """
         self.asn_data = asn_data
         self.asn_index = 0
-        self.current_record_type = None
         self.record_node = None
+        self.record_number = 0
 
     def skip_until_asn_block(self):
         """
@@ -187,8 +201,8 @@ class ASN1BERDecoder(object):
         :return:
         """
         self.record_node = record_node or self.decode_node(None)
-        record_data = {}
-        self.current_record_type = None
+        self.record_number += 1
+        record_data = {self.RECORDNUMBER_FIELD_NAME: self.record_number}
         try:
             self.traverse_asn(self.record_node, record_data=record_data)
         except SkipRecordError:
@@ -210,7 +224,8 @@ class ASN1BERDecoder(object):
 
             if node.depth == self.recordtype_depth:
                 if node.id in self.target_recordtypes:
-                    self.current_record_type = self.target_recordtypes[node.id]
+                    # Set record type field
+                    record_data[self.RECORDTYPE_FIELD_NAME] = self.target_recordtypes[node.id]
                 else:  # Skip irrelevant record type
                     self.skip_node(self.record_node)
                     raise SkipRecordError()

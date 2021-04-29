@@ -43,10 +43,7 @@ class Value(Operation):
         return self.value
 
     def description(self):
-        # if isinstance(self.value, str):
         return 'Value: "{}"'.format(self.value)
-        # else:
-        #     return str(self.value)
 
 
 class ContextValue(Operation):

@@ -14,7 +14,6 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
     Takes binary file content, returns Dataframe of records
     Need to specify record types and fields of interest for extraction
     """
-    RECORDTYPE_FIELD_NAME = 'asn1_record_type'
 
     calling_translations = {'file_data': 'dataframe'}
 
@@ -24,15 +23,11 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
         :param list/tuple of ASN1Field fields: ASN1Field instances describing target fields and ASN1 IDs within target recordtypes
         :param head_trailer_lengths: Mapping which describes format of the ASCII File and Logical header and trailer lines within the ASN1 file.
         """
-        # Validate field configuration
-        for field in fields:
-            # Validate no field has same name as recordtype field name
-            if field.name == self.RECORDTYPE_FIELD_NAME:
-                self.error(exceptions.ETLConfigurationError, 'ASN1 record schema defined with field name same as recordtype field name: {}'.format(self.RECORDTYPE_FIELD_NAME))
 
         self.asn_decoder = asn1_decoder.ASN1BERDecoder(record_types, fields, head_trailer_lengths)
-        # Add Record Type field so it is not removed during column re-ordering
-        super().__init__(fields + [ASN1BERField(self.RECORDTYPE_FIELD_NAME, None)])
+        # Add Record Type and number fields so they are not removed during column re-ordering
+        super().__init__(fields + [ASN1BERField(self.asn_decoder.RECORDTYPE_FIELD_NAME, None),
+                                   ASN1BERField(self.asn_decoder.RECORDNUMBER_FIELD_NAME, None)])
 
     def create_dataframe(self, file_data):
         """
@@ -62,8 +57,6 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
                 # Root node = entire record
                 record = self.asn_decoder.build_asn_record()
                 if record:
-                    # Set recordtype name
-                    record[self.RECORDTYPE_FIELD_NAME] = self.asn_decoder.current_record_type.name
                     yield record
         except exceptions.EndOfFileError:
             return
