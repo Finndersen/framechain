@@ -5,9 +5,8 @@ import pandas as pd
 from pandas.core.dtypes.common import is_datetime64_any_dtype
 
 from etl_framework.exceptions import ChangedDataTypError, ETLConfigurationError
-from etl_framework.operations import CompoundOperation
-from etl_framework.operations.pandas import Field, IsNull
-from etl_framework.operations.pandas.base import ConditionallyAppliedOperation
+from etl_framework.operations import CompoundOperation, convert_to_operation
+from etl_framework.operations.pandas import Field, IsNull, ConditionallyAppliedOperation
 
 
 class SetColumn(ConditionallyAppliedOperation):
@@ -145,7 +144,7 @@ class SetField(CompoundOperation):
         :param str field: Name of column to populate output values in
         :param callable transform: Callable which either takes Series and returns a single value to set on the field
         """
-        self.transform = transform
+        self.transform = convert_to_operation(transform)
         self.field = field
         super().__init__(transform)
 

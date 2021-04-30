@@ -3,8 +3,7 @@ Primary Pandas operations which take Dataframe and return Dataframe
 """
 import logging
 
-from etl_framework.operations.base import CompoundOperation
-from etl_framework.utils import validate_callable
+from etl_framework.operations import CompoundOperation, convert_to_operation
 from .base import DataframeOperation
 
 log = logging.getLogger(__name__)
@@ -19,7 +18,7 @@ class DeleteRows(CompoundOperation, DataframeOperation):
         """
         :param callable condition: Condition to filter row on. Takes DF and returns boolean mask
         """
-        self.condition = validate_callable(condition, wrap_scalar=False)
+        self.condition = convert_to_operation(condition, wrap_value=False)
         super().__init__(self.condition)
 
     def action(self, dataframe):

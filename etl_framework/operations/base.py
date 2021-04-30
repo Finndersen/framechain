@@ -490,8 +490,8 @@ class OperationsWithOperator(CompoundOperation):
         :param op2: Second (right side) operation
         :param str operator_str: String representing operator
         """
-        self.op1 = validate_callable(op1)
-        self.op2 = validate_callable(op2)
+        self.op1 = convert_to_operation(op1)
+        self.op2 = convert_to_operation(op2)
         # Store operator string
         assert operator_str in self.OPERATORS, '{} is not a valid operator string'.format(operator_str)
         self.operator_str = operator_str
@@ -527,8 +527,7 @@ class SingleOperandOperator(CompoundOperation):
     operator_str = None
 
     def __init__(self, op):
-        TypeTranslations.check_operator_allowed(op, self.operator_str)
-        self.operation = op
+        self.operation = convert_to_operation(op)
         # Inherit type translations
         # self.calling_translations = TypeTranslations.get_for_operation(op)
         super().__init__(self.operation)
@@ -572,29 +571,16 @@ class SlicedOperation(SingleOperandOperator):
         if not isinstance(key, (slice, int)):
             self.error(ValueError, 'Indexing key must be integer or slice')
         self.key=key
-        # Attempt to determine operation output type
-        op_type_translation = TypeTranslations.get_for_operation(op)
-        if len(op_type_translation) == 1:
-            self.result_type = list(op_type_translation.values())[0]
-        else:
-            self.result_type = None
         super().__init__(op)
 
     def action(self, *args, **kwargs):
         op_result = self.run_wrapped_operation(self.operation, *args, **kwargs)
 
-        if self.result_type == 'column':
-            # Pandas vectorised string slice
+        # Unknown result type, Check if result is Series or scalar value
+        if isinstance(op_result, pd.Series):
             return op_result.str[self.key]
-        elif self.result_type == 'value':
-            # Standard string slice
-            return op_result[self.key]
         else:
-            # Unknown result type, Check if result is Series or scalar value
-            if isinstance(op_result, pd.Series):
-                return op_result.str[self.key]
-            else:
-                return op_result[self.key]
+            return op_result[self.key]
 
     def description(self):
         if isinstance(self.key, slice):
@@ -621,8 +607,8 @@ class ChainedOperations(CompoundOperation):
         :param op1: First (left side) operation
         :param op2: Second (right side) operation
         """
-        self.op1 = validate_callable(op1)
-        self.op2 = validate_callable(op2)
+        self.op1 = convert_to_operation(op1)
+        self.op2 = convert_to_operation(op2)
         super().__init__(self.op1, self.op2)
 
     def action(self, *args):
@@ -635,14 +621,6 @@ class ChainedOperations(CompoundOperation):
         start_node2, end_node2 = self.op2.add_to_graph(graph)
         graph.add_edge(Edge(end_node1, start_node2))
         return start_node1, end_node2
-
-    # def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None, add_self_data=False):
-    #
-    #     return super().add_profile_data(profile_data,
-    #                                     actual_caller=actual_caller,
-    #                                     # If THEN operation is not root-level (caller is None) then will not add
-    #                                     # profile data (act invisible)
-    #                                     add_self_data=add_self_data or actual_caller is None)
 
     def short_description(self):
         return 'Chain of operations'
@@ -726,3 +704,74 @@ class UncallableOperation(object):
     Mixin to make operation not callable
     """
     __call__ = property()
+
+
+class Value(Operation):
+    """
+    Allows specifying static values (strings, numbers, etc) which can be used in arithmetic or comparison with other operations
+    Required when using 'in' operator
+    """
+    calling_translations = {
+        'dataframe': 'value',
+        'column': 'value',
+        'row': 'value',
+        'value': 'value'
+    }
+
+    def __init__(self, value):
+        self.value = value
+
+    def action(self, *args, **kwargs):
+        # Return static value regardless of of input
+        return self.value
+
+    def description(self):
+        return 'Value: "{}"'.format(self.value)
+
+
+class Lambda(Operation):
+    """
+    Allows for custom simple transform logic
+    Can optionally provide type translation for compatability validation
+
+    """
+    def __init__(self, func, description=None, type_translation=None):
+        """
+
+        :param func: Callable which takes input value, performs processing logic and returns output
+        :param str description: Description of what function does
+        :param type_translation: Optionally provide type translation of custom function
+        """
+        self.func = func
+        self._description = description or func.__name__
+        if type_translation:
+            self.calling_translations = type_translation
+
+    def action(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
+
+    def description(self):
+        return self._description
+
+
+def convert_to_operation(val, none_allowed=False, wrap_value=True):
+    """
+    Wrap input with appropriate operation if not already an operation
+    :param val:
+    :param bool none_allowed: Whether operation can be absent
+    :param bool wrap_value: Whether to wrap non-callable value in Value Operation
+    :return:
+    """
+    if val is None and none_allowed:
+        return None
+
+    if isinstance(val, BaseOperation):
+        return val
+
+    if callable(val):
+        return Lambda(val)
+
+    if wrap_value:
+        return Value(val)
+    else:
+        raise ValueError('Value is not callable: {}'.format(val))

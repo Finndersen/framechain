@@ -4,7 +4,8 @@ Operations to control flow of pipeline
 import copy
 import logging
 
-from etl_framework.operations import CompoundOperation, Pass, Operation, convert_to_operation
+from etl_framework.operations import CompoundOperation, Pass, Operation
+from etl_framework.operations.base import convert_to_operation
 from etl_framework.utils import randomstring, LogDuration
 
 log = logging.getLogger(__name__)
@@ -26,8 +27,8 @@ class If(CompoundOperation):
         :param true_operation: Operation to execute if condition returns True
         :param false_operation: Operation to execute if condition returns False (defaults to no action)
         """
-        self.false_operation = false_operation or Pass()
-        self.true_operation = true_operation
+        self.false_operation = convert_to_operation(false_operation, none_allowed=True) or Pass()
+        self.true_operation = convert_to_operation(true_operation)
         self.condition = convert_to_operation(condition)
         super().__init__(self.false_operation, self.true_operation, self.condition)
 

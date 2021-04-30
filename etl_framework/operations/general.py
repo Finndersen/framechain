@@ -3,7 +3,7 @@ Operations for controlling flow of pipeline
 """
 import logging
 from etl_framework.context import transform_context
-from etl_framework.operations import Operation, BaseOperation
+from etl_framework.operations import Operation
 from etl_framework.operations.types import TypeTranslations
 
 log = logging.getLogger(__name__)
@@ -21,29 +21,6 @@ class Pass(Operation):
 
     def description(self):
         return 'Pass'
-
-
-class Value(Operation):
-    """
-    Allows specifying static values (strings, numbers, etc) which can be used in arithmetic or comparison with other operations
-    Required when using 'in' operator
-    """
-    calling_translations = {
-        'dataframe': 'value',
-        'column': 'value',
-        'row': 'value',
-        'value': 'value'
-    }
-
-    def __init__(self, value):
-        self.value = value
-
-    def action(self, *args, **kwargs):
-        # Return static value regardless of of input
-        return self.value
-
-    def description(self):
-        return 'Value: "{}"'.format(self.value)
 
 
 class ContextValue(Operation):
@@ -70,31 +47,6 @@ class ContextValue(Operation):
 
     def description(self):
         return 'Transform Context value: "{}"'.format(self.key_name)
-
-
-class Lambda(Operation):
-    """
-    Allows for custom simple transform logic
-    Can optionally provide type translation for compatability validation
-
-    """
-    def __init__(self, func, description=None, type_translation=None):
-        """
-
-        :param func: Callable which takes input value, performs processing logic and returns output
-        :param str description: Description of what function does
-        :param type_translation: Optionally provide type translation of custom function
-        """
-        self.func = func
-        self._description = description or func.__name__
-        if type_translation:
-            self.calling_translations = type_translation
-
-    def action(self, *args, **kwargs):
-        return self.func(*args, **kwargs)
-
-    def description(self):
-        return self._description
 
 
 class Map(Operation):
@@ -234,20 +186,3 @@ class ArgsToList(Operation):
         return args
 
 
-def convert_to_operation(val, none_allowed=False):
-    """
-    Wrap input with appropriate operation if not already an operation
-    :param val:
-    :param bool none_allowed: Whether operation can be absent
-    :return:
-    """
-    if val is None and none_allowed:
-        return None
-
-    if isinstance(val, BaseOperation):
-        return val
-
-    if callable(val):
-        return Lambda(val)
-
-    return Value(val)

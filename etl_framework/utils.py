@@ -56,6 +56,9 @@ class Memoized(object):
         """Support instance methods."""
         return functools.partial(self.__call__, obj)
 
+    def __getattr__(self, item):
+        return getattr(self.func, item)
+
 
 def validate_callable(op, optional=True, wrap_scalar=True):
     """

@@ -27,6 +27,9 @@ class BaseDataFrameGenerator(CompoundOperation):
         # Validate field names are unique
         field_names = set()
         for field in fields:
+            if not isinstance(field, InputField):
+                raise TypeError('Fields should be subclasses of InputField')
+
             if field.name in field_names:
                 raise ETLConfigurationError(
                     'Input field: "{}" has already been defined for {}'.format(field.name, type(self).__name__))

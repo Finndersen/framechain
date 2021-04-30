@@ -1,4 +1,4 @@
-from etl_framework.operations import Operation, CompoundOperation
+from etl_framework.operations import Operation, CompoundOperation, convert_to_operation
 from etl_framework.utils import validate_callable, randomstring
 
 
@@ -46,8 +46,8 @@ class ConditionallyAppliedOperation(CompoundOperation):
         which rows 'operation' will be applied to (optional)
         """
         # self.validate_wrapped_operation_compatability(operation)
-        self.operation = validate_callable(operation)
-        self.condition = validate_callable(condition, wrap_scalar=False)
+        self.operation = convert_to_operation(operation)
+        self.condition = convert_to_operation(condition, none_allowed=True)
         wrapped_operations = [self.operation, self.condition] if self.condition else [self.operation]
         super().__init__(*wrapped_operations)
 

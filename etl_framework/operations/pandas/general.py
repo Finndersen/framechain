@@ -1,4 +1,4 @@
-from etl_framework.operations.base import Operation, CompoundOperation
+from etl_framework.operations import Operation, CompoundOperation, convert_to_operation
 from etl_framework.operations.general import Map
 from etl_framework.exceptions import ETLConfigurationError
 import pandas as pd
@@ -65,7 +65,7 @@ class Apply(CompoundOperation):
         """
         :param operation: Operation to apply to each element of vector
         """
-        self.operation = operation
+        self.operation = convert_to_operation(operation)
         super().__init__(self.operation)
 
     def action(self, vector):
@@ -74,7 +74,9 @@ class Apply(CompoundOperation):
         :return:
         """
         if isinstance(vector, pd.DataFrame):
-            return vector.apply(lambda row: self.run_wrapped_operation(self.operation, row), axis=1, result_type='reduce')
+            return vector.apply(lambda row: self.run_wrapped_operation(self.operation, row),
+                                axis=1,
+                                result_type='reduce')
         elif isinstance(vector, pd.Series):
             return vector.apply(lambda value: self.run_wrapped_operation(self.operation, value))
         else:

@@ -1,4 +1,4 @@
-from etl_framework.operations.base import Operation, CompoundOperation
+from etl_framework.operations import Operation, CompoundOperation, convert_to_operation
 from etl_framework.utils import Memoized, validate_callable
 
 
@@ -15,7 +15,7 @@ class Cached(CompoundOperation):
     calling_translations = wrapping_translations
 
     def __init__(self, operation):
-        self.operation = Memoized(operation)
+        self.operation = Memoized(convert_to_operation(operation, wrap_value=False))
         super().__init__(self.operation)
 
     def action(self, *args, **kwargs):
@@ -50,9 +50,9 @@ class MapArguments(CompoundOperation):
         :param callable, str arg_mapping: mapping of transform arg names to operations which take wrapper input
         and return desired value
         """
-        self.arg_mapping = arg_mapping
+        self.arg_mapping = {arg_name: convert_to_operation(op) for arg_name, op in arg_mapping.items()}
         self.operation = operation
-        super().__init__(self.operation)
+        super().__init__(*([self.operation] + list(self.arg_mapping.values())))
 
     def action(self, *args, **kwargs):
         """
@@ -77,7 +77,7 @@ class Not(CompoundOperation):
 
         :param operation: Operation to wrap and return NOT result of.
         """
-        self.operation = operation
+        self.operation = convert_to_operation(operation)
         super().__init__(operation)
 
     def action(self, *args, **kwargs):
