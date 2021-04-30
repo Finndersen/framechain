@@ -3,7 +3,7 @@ Operations for controlling flow of pipeline
 """
 import logging
 from etl_framework.context import transform_context
-from etl_framework.operations import Operation
+from etl_framework.operations import Operation, BaseOperation
 from etl_framework.operations.types import TypeTranslations
 
 log = logging.getLogger(__name__)
@@ -232,3 +232,22 @@ class ArgsToList(Operation):
     """
     def action(self, *args):
         return args
+
+
+def convert_to_operation(val, none_allowed=False):
+    """
+    Wrap input with appropriate operation if not already an operation
+    :param val:
+    :param bool none_allowed: Whether operation can be absent
+    :return:
+    """
+    if val is None and none_allowed:
+        return None
+
+    if isinstance(val, BaseOperation):
+        return val
+
+    if callable(val):
+        return Lambda(val)
+
+    return Value(val)

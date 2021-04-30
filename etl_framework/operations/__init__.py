@@ -1,4 +1,4 @@
-from .base import Operation, CompoundOperation
+from .base import Operation, CompoundOperation, BaseOperation
 from .wrappers import *
 from .general import *
 from .control import *

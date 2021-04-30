@@ -4,7 +4,7 @@ Operations to control flow of pipeline
 import copy
 import logging
 
-from etl_framework.operations import CompoundOperation, Pass, Operation
+from etl_framework.operations import CompoundOperation, Pass, Operation, convert_to_operation
 from etl_framework.utils import randomstring, LogDuration
 
 log = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class If(CompoundOperation):
         """
         self.false_operation = false_operation or Pass()
         self.true_operation = true_operation
-        self.condition = condition
+        self.condition = convert_to_operation(condition)
         super().__init__(self.false_operation, self.true_operation, self.condition)
 
     def action(self, value):
@@ -145,21 +145,24 @@ class Fork(CompoundOperation):
             outputs.append(value)
         return outputs
 
-    def add_profile_data(self, profile_data, caller=None, add_self_data=True):
+    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None, transparent=None):
         """
-        Force normally 'transparent' fork operations (e.g. THEN) to add their own profile data so each fork is bundled
-        :param profile_data:
-        :param caller:
-        :param bool add_self_data: Whether this operation wrapper should include its own profile stats, or be
-        'transparent'
+
+        :param dict profile_data:
+        :param Operation actual_caller:
+        :param Operation proxy_caller:
+        :param bool transparent:
         :return:
         """
-        Operation.add_profile_data(self, profile_data, caller=caller,
-                                   add_self_data=add_self_data)
+        # Force normally 'transparent' fork operations (e.g. THEN) to add their own profile data so each fork is bundled
+        # Add profile data for self
+        super().add_profile_data(profile_data, actual_caller=actual_caller, proxy_caller=proxy_caller)
+        # Add profile data for wrapped operations
         for operation in self.wrapped_operations:
-            operation.add_profile_data(profile_data, self if add_self_data else caller,
-                                       add_self_data=True)
-        return profile_data
+            operation.add_profile_data(profile_data,
+                                       actual_caller=self,
+                                       proxy_caller=self,
+                                       transparent=False)
 
     def add_to_graph(self, graph):
         from pydot import Edge, Node

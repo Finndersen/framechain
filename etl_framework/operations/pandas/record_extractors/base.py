@@ -51,7 +51,7 @@ class BaseDataFrameGenerator(CompoundOperation):
             # Perform field vector conversions
             with LogDuration(log, 'Performing vector field conversions...'):
                 for field in self.fields:
-                    dataframe[field.name] = field.convert_column(dataframe[field.name])
+                    dataframe[field.name] = self.run_wrapped_operation(field, dataframe[field.name])
 
         # Order columns as input field order
         if self.fields:
@@ -79,6 +79,15 @@ class BaseDataFrameGenerator(CompoundOperation):
             exec_time -= field.get_cumulative_time()
         return exec_time
 
+    def get_wrapped_operation_stats(self, wrapped_operation):
+        """
+        BaseDataFrameGenerator does not have visibility of Field.convert_value execution time
+        Assume this is the only caller of the field instance and return full field stats
+        :param wrapped_operation:
+        :return:
+        """
+        return wrapped_operation.get_execution_stats()
+
 
 class InputField(OperatorWrapperMixin, BaseOperation):
     """
@@ -105,7 +114,17 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         super().__init__(*[converter for converter in [self.column_converter, self.value_converter]
                           if converter is not None])
 
-    # def action(self, column):
+    def action(self, column):
+        """
+        perform vectorised value conversion for field
+        :param column: Pandas series containing raw field values
+        :return:
+        """
+        # Perform vectorised value conversion
+        if self.column_converter:
+            column = self.run_wrapped_operation(self.column_converter, column)
+
+        return column
 
     def convert_column(self, column):
         """
@@ -113,14 +132,7 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         :param column: Pandas series containing raw field values
         :return:
         """
-        # Perform vectorised value conversion
-        start_time = perf_counter()
-        if self.column_converter:
-            column = self.run_wrapped_operation(self.column_converter, column)
-
-        self._cumulative_time += perf_counter() - start_time
-        self.call_count += 1
-        return column
+        self(column)
 
     def convert_value(self, value):
         """
@@ -128,7 +140,8 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         :param value:
         :return:
         """
-
+        if self.profiling_enabled:
+            start_time = perf_counter()
 
         if value in self.EMPTY_VALUES:
             value = None
@@ -137,12 +150,11 @@ class InputField(OperatorWrapperMixin, BaseOperation):
             if self.mandatory:
                 raise MandatoryFieldError('Mandatory field: {} has empty value'.format(self))
         else:
-            start_time = perf_counter()
-
             self.validate_raw_value(value)
             if self.value_converter:
                 value = self.run_wrapped_operation(self.value_converter, value)
 
+        if self.profiling_enabled:
             self._cumulative_time += perf_counter() - start_time
             self.call_count += 1
         return value
