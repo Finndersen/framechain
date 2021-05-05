@@ -5,7 +5,7 @@ import pandas as pd
 from pandas.core.dtypes.common import is_datetime64_any_dtype
 
 from etl_framework.exceptions import ChangedDataTypError, ETLConfigurationError
-from etl_framework.operations import CompoundOperation, convert_to_operation
+from etl_framework.operations import CompoundOperation
 from etl_framework.operations.pandas import Field, IsNull, ConditionallyAppliedOperation
 
 
@@ -98,6 +98,7 @@ class ConvertColumn(SetColumn):
         :param bool ignore_null: Whether to add condition to mask out null values if condition is not provided
         If not specified, NotNull condition will be applied. Set to False to disable
         """
+        super().__init__(field, column_transform, condition)
         changes_type = getattr(column_transform, 'changes_type', False)
         # Add NotNull filter condition
         if not condition and not changes_type and ignore_null:
@@ -107,7 +108,6 @@ class ConvertColumn(SetColumn):
             self.error(ETLConfigurationError,
                        'Should not define condition for {} because it changes column data type'.format(
                            column_transform))
-        super().__init__(field, column_transform, condition)
 
     def get_transform_input(self, dataframe, mask):
         """
@@ -144,9 +144,9 @@ class SetField(CompoundOperation):
         :param str field: Name of column to populate output values in
         :param callable transform: Callable which either takes Series and returns a single value to set on the field
         """
-        self.transform = convert_to_operation(transform)
+        super().__init__()
+        self.transform = self.wrap_operation(transform)
         self.field = field
-        super().__init__(transform)
 
     def action(self, row):
         row[self.field] = self.run_wrapped_operation(self.transform, row)

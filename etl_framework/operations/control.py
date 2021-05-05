@@ -5,7 +5,6 @@ import copy
 import logging
 
 from etl_framework.operations import CompoundOperation, Pass, Operation
-from etl_framework.operations.base import convert_to_operation
 from etl_framework.utils import randomstring, LogDuration
 
 log = logging.getLogger(__name__)
@@ -27,10 +26,10 @@ class If(CompoundOperation):
         :param true_operation: Operation to execute if condition returns True
         :param false_operation: Operation to execute if condition returns False (defaults to no action)
         """
-        self.false_operation = convert_to_operation(false_operation, none_allowed=True) or Pass()
-        self.true_operation = convert_to_operation(true_operation)
-        self.condition = convert_to_operation(condition)
-        super().__init__(self.false_operation, self.true_operation, self.condition)
+        super().__init__()
+        self.false_operation = self.wrap_operation(false_operation or Pass())
+        self.true_operation = self.wrap_operation(true_operation)
+        self.condition = self.wrap_operation(condition)
 
     def action(self, value):
         if self.run_wrapped_operation(self.condition, value):
@@ -76,10 +75,10 @@ class SwitchCase(CompoundOperation):
         :param dict case_mapping: Mapping of case values to associated operations
         :param default: Default operation to run if value is not matched
         """
-        self.default = default or Pass()
-        self.case_mapping = case_mapping
-        self.key_operation = key_operation
-        super().__init__(*list(case_mapping.values()), default, key_operation)
+        super().__init__()
+        self.default = self.wrap_operation(default or Pass())
+        self.case_mapping = {key: self.wrap_operation(operation) for key, operation in case_mapping.items()}
+        self.key_operation = self.wrap_operation(key_operation, wrap_value=False)
 
     def action(self, value):
         case_value = self.run_wrapped_operation(self.key_operation, value)
@@ -125,10 +124,10 @@ class Fork(CompoundOperation):
 
         :param Operation fork_operations: Sequence of operation chains to execute with single input.
         """
+        super().__init__()
         if len(fork_operations) < 2:
             self.error(ValueError, 'Provide at least 2 operations to Fork')
-        self.fork_operations = list(fork_operations)
-        super().__init__(*self.fork_operations)
+        self.fork_operations = [self.wrap_operation(operation) for operation in fork_operations]
 
     def action(self, input_val):
         """
@@ -199,7 +198,7 @@ class Collect(Operation):
         return tuple(iterable)
 
 
-class Iterate(Operation):
+class Iterate(CompoundOperation):
     """
     Iterates over provided iterator and execute provided operation on each element
     Returns a generator of result of each item after being transformed by operation
@@ -210,8 +209,9 @@ class Iterate(Operation):
 
         :param operation: Operation to run on each iterator item
         """
-        self.operation = operation
+        super().__init__()
+        self.operation = self.wrap_operation(operation)
 
     def action(self, iterable):
         for item in iterable:
-            yield self.operation(item)
+            yield self.run_wrapped_operation(self.operation, item)

@@ -45,11 +45,9 @@ class ConditionallyAppliedOperation(CompoundOperation):
         :param Operation condition: will be provided input dataframe, and return boolean series mask which determines
         which rows 'operation' will be applied to (optional)
         """
-        # self.validate_wrapped_operation_compatability(operation)
-        self.operation = convert_to_operation(operation)
-        self.condition = convert_to_operation(condition, none_allowed=True)
-        wrapped_operations = [self.operation, self.condition] if self.condition else [self.operation]
-        super().__init__(*wrapped_operations)
+        super().__init__()
+        self.operation = self.wrap_operation(operation)
+        self.condition = self.wrap_operation(condition, none_allowed=True)
 
     def add_to_graph(self, graph):
         # Create Subgraph/cluster to contain wrapped operation

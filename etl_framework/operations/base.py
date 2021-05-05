@@ -4,6 +4,7 @@ import pandas as pd
 import sys
 import operator, logging, marshal, tempfile
 from time import perf_counter, sleep
+from collections import defaultdict
 
 log = logging.getLogger(__name__)
 
@@ -355,20 +356,27 @@ class OperatorWrapperMixin(BaseOperation):
     Inherits from BaseOperation so it does not have Operator overloads,
     and can be used with Field operations which do not support operators
     """
-    def __init__(self, *wrapped_operations):
+    def __init__(self):
         """
 
         :param Operation wrapped_operations: operations which are encapsulated within (called by) this one
         """
-        self._wrapped_execution_stats = {}
+        self._wrapped_execution_stats = defaultdict(lambda : [0,0,0,0])
         self._wrapped_execution_cumtime = 0
-        self.wrapped_operations = wrapped_operations
-        self._init_wrapped_execution_stats()
+        self.wrapped_operations = []
         super().__init__()
 
-    def _init_wrapped_execution_stats(self):
-        for operation in self.wrapped_operations:
-            self._wrapped_execution_stats[operation.pstat_id] = [0,0,0,0]
+    def wrap_operation(self, operation, **kwargs):
+        """
+        Converts operation and adds to list of wrapped operations
+        :param operation:
+        :param kwargs:
+        :return:
+        """
+        operation = convert_to_operation(operation, **kwargs)
+        if operation:
+            self.wrapped_operations.append(operation)
+        return operation
 
     def run_wrapped_operation(self, operation, *args, **kwargs):
         """
@@ -445,7 +453,7 @@ class OperatorWrapperMixin(BaseOperation):
 
     def clear_profile_stats(self):
         super().clear_profile_stats()
-        self._init_wrapped_execution_stats()
+        self._wrapped_execution_stats = defaultdict(lambda : [0,0,0,0])
         self._wrapped_execution_cumtime = 0
         for operation in self.wrapped_operations:
             operation.clear_profile_stats()
@@ -490,12 +498,12 @@ class OperationsWithOperator(CompoundOperation):
         :param op2: Second (right side) operation
         :param str operator_str: String representing operator
         """
-        self.op1 = convert_to_operation(op1)
-        self.op2 = convert_to_operation(op2)
+        super().__init__()
+        self.op1 = self.wrap_operation(op1)
+        self.op2 = self.wrap_operation(op2)
         # Store operator string
         assert operator_str in self.OPERATORS, '{} is not a valid operator string'.format(operator_str)
         self.operator_str = operator_str
-        super().__init__(self.op1, self.op2)
 
     def action(self, *args, **kwargs):
         # Apply operator on output of two operands
@@ -527,10 +535,8 @@ class SingleOperandOperator(CompoundOperation):
     operator_str = None
 
     def __init__(self, op):
-        self.operation = convert_to_operation(op)
-        # Inherit type translations
-        # self.calling_translations = TypeTranslations.get_for_operation(op)
-        super().__init__(self.operation)
+        super().__init__()
+        self.operation = self.wrap_operation(op)
 
 
 class InvertedOperation(SingleOperandOperator):
@@ -607,9 +613,9 @@ class ChainedOperations(CompoundOperation):
         :param op1: First (left side) operation
         :param op2: Second (right side) operation
         """
-        self.op1 = convert_to_operation(op1)
-        self.op2 = convert_to_operation(op2)
-        super().__init__(self.op1, self.op2)
+        super().__init__()
+        self.op1 = self.wrap_operation(op1)
+        self.op2 = self.wrap_operation(op2)
 
     def action(self, *args):
         # Return chained output.

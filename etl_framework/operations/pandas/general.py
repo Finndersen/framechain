@@ -1,4 +1,4 @@
-from etl_framework.operations import Operation, CompoundOperation, convert_to_operation
+from etl_framework.operations import Operation, CompoundOperation
 from etl_framework.operations.general import Map
 from etl_framework.exceptions import ETLConfigurationError
 import pandas as pd
@@ -65,8 +65,8 @@ class Apply(CompoundOperation):
         """
         :param operation: Operation to apply to each element of vector
         """
-        self.operation = convert_to_operation(operation)
-        super().__init__(self.operation)
+        super().__init__()
+        self.operation = self.wrap_operation(operation)
 
     def action(self, vector):
         """

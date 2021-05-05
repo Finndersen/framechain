@@ -1,7 +1,6 @@
 from etl_framework.utils import LogDuration
-from etl_framework.operations.base import BaseOperation, OperatorWrapperMixin, CompoundOperation
+from etl_framework.operations import BaseOperation, OperatorWrapperMixin, CompoundOperation
 from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
-from etl_framework.operations.transforms import StringToDatetime
 from etl_framework.operations.pandas.transforms import ToInteger, SetColumnTimezone, StringColumnToDatetime
 import logging
 from time import perf_counter
@@ -24,6 +23,7 @@ class BaseDataFrameGenerator(CompoundOperation):
         :param fields: list/tuple of InputField subclasses defining fields to be extracted from input
         and turned into DataFrame columns
         """
+        super().__init__()
         # Validate field names are unique
         field_names = set()
         for field in fields:
@@ -34,8 +34,7 @@ class BaseDataFrameGenerator(CompoundOperation):
                 raise ETLConfigurationError(
                     'Input field: "{}" has already been defined for {}'.format(field.name, type(self).__name__))
             field_names.add(field.name)
-        self.fields = fields
-        super().__init__(*self.fields)
+        self.fields = [self.wrap_operation(field) for field in fields]
 
     def action(self, input_data):
         """
@@ -110,12 +109,11 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         :param callable column_converter: Custom converter function which takes column of raw field values, and returns column of converted values
         :param callable value_converter: Custom function which converts takes raw field value before Dataframe is constructed
         """
+        super().__init__()
         self.name = name
         self.mandatory = mandatory
-        self.column_converter = column_converter or self.column_converter
-        self.value_converter = value_converter or self.value_converter
-        super().__init__(*[converter for converter in [self.column_converter, self.value_converter]
-                          if converter is not None])
+        self.column_converter = self.wrap_operation(column_converter or self.column_converter, none_allowed=True)
+        self.value_converter = self.wrap_operation(value_converter or self.value_converter, none_allowed=True)
 
     def action(self, column):
         """
