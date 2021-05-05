@@ -13,9 +13,9 @@ class SubGraph(CompoundOperation):
         :param str label: Label for Subgraph
         :param Operation operation: Operation to wrap in subgraph
         """
-        self.operation = operation
+        super().__init__()
+        self.operation = self.wrap_operation(operation)
         self.label = label
-        super().__init__(operation)
 
     def action(self, *args, **kwargs):
         return self.run_wrapped_operation(self.operation, *args, **kwargs)
