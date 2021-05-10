@@ -2,6 +2,7 @@
 Operations which are used to help construct more complex field-based transforms with masking capability
 """
 import pandas as pd
+import numpy as np
 from pandas.core.dtypes.common import is_datetime64_any_dtype
 
 from etl_framework.exceptions import ChangedDataTypError, ETLConfigurationError
@@ -38,8 +39,17 @@ class SetColumn(ConditionallyAppliedOperation):
         dataframe = dataframe.copy(deep=False)
         # Generate transform mask with condition if appropriate
         mask = self.run_wrapped_operation(self.condition, dataframe) if self.condition else None
-        if mask is not None and not pd.api.types.is_bool_dtype(mask):
-            self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
+        if mask is not None:
+            if not pd.api.types.is_bool_dtype(mask):
+                self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
+
+            # Exit early if mask does not match any values (no changes made)
+            if not mask.any():
+                # Add empty column if doesnt exist
+                if self.field not in dataframe.columns:
+                    dataframe[self.field] = np.nan
+                return dataframe
+
         # Get Masked/filtered version of Dataframe
         transform_input = self.get_transform_input(dataframe, mask)
         # Perform transformation on dataframe

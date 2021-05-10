@@ -1,8 +1,8 @@
 import pandas as pd
-from etl_framework.operations.pandas.record_extractors.files.base import FileRecordExtractor
+from etl_framework.operations.pandas.record_extractors.base import BaseDataFrameGenerator
 
 
-class BinaryPositionSeperatedRecordExtractor(FileRecordExtractor):
+class BinaryPositionSeperatedRecordExtractor(BaseDataFrameGenerator):
     """
     Extract records from binary data file with fields seperated by a  position
     """

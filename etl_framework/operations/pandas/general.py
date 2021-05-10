@@ -75,8 +75,7 @@ class Apply(CompoundOperation):
         """
         if isinstance(vector, pd.DataFrame):
             return vector.apply(lambda row: self.run_wrapped_operation(self.operation, row),
-                                axis=1,
-                                result_type='reduce')
+                                axis=1)
         elif isinstance(vector, pd.Series):
             return vector.apply(lambda value: self.run_wrapped_operation(self.operation, value))
         else:
@@ -93,7 +92,6 @@ class Mask(ConditionallyAppliedOperation):
     It is possible to use operations to delete rows of a masked DF (e.g. using DeleteRows),
     however it is not recommended and does not have good performance
     """
-    wrapping_translations = calling_translations = {'column': 'column', 'dataframe': 'dataframe'}
 
     def __init__(self, condition, operation):
         """
@@ -104,27 +102,35 @@ class Mask(ConditionallyAppliedOperation):
 
         super().__init__(operation, condition=condition)
 
-    def action(self, df_or_column):
-        # Make copy to avoid making changes to original Series or DF (deep copy if Series)
-        df_or_column = df_or_column.copy(deep=isinstance(df_or_column, pd.Series))
-        # Get mask using condition
-        mask = self.run_wrapped_operation(self.condition, df_or_column)
-        if mask is not None and not pd.api.types.is_bool_dtype(mask):
-            self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
-        # Provide masked data to operation. Make copy to avoid SettingWithCopyWarning
-        transformed_values = self.run_wrapped_operation(self.operation, df_or_column.loc[mask].copy())
-        # Integrate values back into original Dataframe or column
-        df_or_column.loc[mask] = transformed_values
+    def action(self, df_or_column_original):
 
-        if isinstance(df_or_column, pd.DataFrame):
+        # Get mask using condition (should be read-only operation)
+        mask = self.run_wrapped_operation(self.condition, df_or_column_original)
+
+        if not pd.api.types.is_bool_dtype(mask):
+            self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
+
+        # Exit early if mask does not match any values (unless input is DF cause transform may add extra columns)
+        if isinstance(df_or_column_original, pd.Series) and not mask.any():
+            return df_or_column_original
+
+        # Make copy to avoid making changes to original Series or DF (deep copy if Series)
+        df_or_column_copy = df_or_column_original.copy(deep=isinstance(df_or_column_original, pd.Series))
+
+        # Provide masked data to operation. Make copy to avoid SettingWithCopyWarning
+        transformed_values = self.run_wrapped_operation(self.operation, df_or_column_copy.loc[mask].copy())
+        # Integrate values back into original Dataframe or column
+        df_or_column_copy.loc[mask] = transformed_values
+
+        if isinstance(df_or_column_copy, pd.DataFrame):
             # Add in any extra columns that may have been added to masked Dataframe
             for column_name in transformed_values.columns:
-                if column_name not in df_or_column.columns:
-                    df_or_column.loc[mask, column_name] = transformed_values[column_name]
+                if column_name not in df_or_column_copy.columns:
+                    df_or_column_copy.loc[mask, column_name] = transformed_values[column_name]
             # Filter out any fully null rows in case DeleteRows operation was applied to masked content
-            df_or_column.dropna(how='all', inplace=True)
+            df_or_column_copy.dropna(how='all', inplace=True)
 
-        return df_or_column
+        return df_or_column_copy
 
     def description(self):
         return 'Mask with condition ({}) and apply ({})'.format(self.condition, self.operation)
