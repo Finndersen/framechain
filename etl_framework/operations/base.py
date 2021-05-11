@@ -138,7 +138,6 @@ class BaseOperation(object):
     call_count = 0
     _cumulative_time = 0
     profiling_enabled = False
-    transparent = False         # Whether Operation is transparent for profiling purposes
 
     def error(self, exc_type, message):
         """
@@ -220,37 +219,34 @@ class BaseOperation(object):
         """
 
         :param dict profile_data: Current profile data dictionary
-        :param Operation actual_caller: parent calling operation
-        :param Operation proxy_caller: Proxy calling operation, can be different to actual_caller if there are
+        :param CompoundOperation actual_caller: parent calling operation
+        :param CompoundOperation proxy_caller: Proxy calling operation, can be different to actual_caller if there are
         'transparent' operations in between
         :param bool transparent: Used to force transparency irrespective of class attribute
         :return:
         """
-        # Dont add to profile stats if it is not called
+        # Dont add to profile stats if not called
         if not self.call_count:
             return
 
-        if transparent is None:
-            transparent = self.transparent and actual_caller is not None
+        node_id = self.pstat_id
+        node_stats = self.get_execution_stats()
 
-        if not transparent:
-            node_id = self.pstat_id
-            node_stats = self.get_execution_stats()
+        if actual_caller:
+            # Calling operation must be a CompoundOperation
+            stats_for_caller = actual_caller.get_wrapped_operation_stats(self)
 
-            if actual_caller:
-                stats_for_caller = actual_caller.get_wrapped_operation_stats(self)
+            if stats_for_caller[0]:
+                if node_id in profile_data:
+                    # Add to existing caller details
+                    profile_data[node_id][4][proxy_caller.pstat_id] = stats_for_caller
+                else:
+                    # Create new entry with caller detail
+                    profile_data[node_id] = node_stats + [{proxy_caller.pstat_id: stats_for_caller}]
 
-                if stats_for_caller[0]:
-                    if node_id in profile_data:
-                        # Add to existing caller details
-                        profile_data[node_id][4][proxy_caller.pstat_id] = stats_for_caller
-                    else:
-                        # Create new entry with caller detail
-                        profile_data[node_id] = node_stats + [{proxy_caller.pstat_id: stats_for_caller}]
-
-            if node_id not in profile_data:
-                # Create new entry with no caller detail
-                profile_data[node_id] = node_stats + [{}]
+        if node_id not in profile_data:
+            # Create new entry with no caller detail
+            profile_data[node_id] = node_stats + [{}]
 
     def get_execution_stats(self):
         """
@@ -426,22 +422,17 @@ class OperatorWrapperMixin(BaseOperation):
         """
 
         :param dict profile_data:
-        :param Operation actual_caller:
-        :param Operation proxy_caller:
+        :param CompoundOperation actual_caller:
+        :param CompoundOperation proxy_caller:
         :param bool transparent:
         :return:
         """
-        if transparent is None:
-            transparent = self.transparent and actual_caller is not None
-
-        # Add profile data for self
-        if not transparent:
-            super().add_profile_data(profile_data, actual_caller=actual_caller, proxy_caller=proxy_caller)
+        super().add_profile_data(profile_data, actual_caller=actual_caller, proxy_caller=proxy_caller)
         # Add profile data for wrapped operations
         for operation in self.wrapped_operations:
             operation.add_profile_data(profile_data,
                                        actual_caller=self,
-                                       proxy_caller=proxy_caller if transparent else self)
+                                       proxy_caller=self)
 
     def get_execute_time(self):
         """
@@ -605,7 +596,6 @@ class ChainedOperations(CompoundOperation):
     Also contains validation logic for checking compatability of chained operations
     (output types of op1 must be in op2 input types)
     """
-    transparent = True
 
     def __init__(self, op1, op2):
         """
@@ -627,6 +617,26 @@ class ChainedOperations(CompoundOperation):
         start_node2, end_node2 = self.op2.add_to_graph(graph)
         graph.add_edge(Edge(end_node1, start_node2))
         return start_node1, end_node2
+
+    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None, transparent=None):
+        """
+        Special case where operation chain acts transparently for profile data
+        :param dict profile_data:
+        :param CompoundOperation actual_caller:
+        :param CompoundOperation proxy_caller:
+        :param bool transparent:
+        :return:
+        """
+        transparent = isinstance(actual_caller, ChainedOperations)
+
+        # Add profile data for self
+        if not transparent:
+            super().add_profile_data(profile_data, actual_caller=actual_caller, proxy_caller=proxy_caller)
+        # Add profile data for wrapped operations
+        for operation in self.wrapped_operations:
+            operation.add_profile_data(profile_data,
+                                       actual_caller=self,
+                                       proxy_caller=proxy_caller if transparent else self)
 
     def short_description(self):
         return 'Chain of operations'

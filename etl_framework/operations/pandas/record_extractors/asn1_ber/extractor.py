@@ -17,17 +17,19 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
 
     calling_translations = {'file_data': 'dataframe'}
 
-    def __init__(self, record_types, fields, head_trailer_lengths=None):
+    def __init__(self, record_types, fields, head_trailer_lengths=None, record_processor=None):
         """
         :param list/tuple of ASN1RecordType record_types: ASN1RecordType instances representing target recordtypes
         :param list/tuple of ASN1Field fields: ASN1Field instances describing target fields and ASN1 IDs within target recordtypes
         :param head_trailer_lengths: Mapping which describes format of the ASCII File and Logical header and trailer lines within the ASN1 file.
+        :param record_processor: Optional callable used to process each record dictionary before being provided to DataFrame initialisation
         """
-
         self.asn_decoder = asn1_decoder.ASN1BERDecoder(record_types, fields, head_trailer_lengths)
         # Add Record Type and number fields so they are not removed during column re-ordering
         super().__init__(fields + [ASN1BERField(self.asn_decoder.RECORDTYPE_FIELD_NAME, None),
                                    ASN1BERField(self.asn_decoder.RECORDNUMBER_FIELD_NAME, None)])
+
+        self.record_processor = self.wrap_operation(record_processor, none_allowed=True)
 
     def create_dataframe(self, file_data):
         """
@@ -41,7 +43,8 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
             else:
                 raise ValueError('Expected bytes data or file reader object, not {}'.format(type(file_data)))
 
-        return pd.DataFrame([record for record in self.get_records(file_data)])
+        return pd.DataFrame([self.record_processor(record) if self.record_processor else record
+                             for record in self.get_records(file_data)])
 
     def get_records(self, file_data):
         """

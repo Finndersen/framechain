@@ -1,4 +1,4 @@
-from etl_framework.operations.pandas import StringColumnToDatetime, ColumnMap, BytesColumnToString
+from etl_framework.operations.pandas import StringColumnToDatetime, ColumnMap, BytesColumnToString, AsType
 from etl_framework.operations.transforms import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, BytesToDateString, BytesToTime, BytesToTimeString, \
     BytesToHexString, TBCDBytesToString, BinaryToIPv4Address, BinaryToIPv6Address, BCDTimestampToString
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
@@ -78,6 +78,7 @@ class EnumeratedField(IntegerField):
     """
     Field which translates an enumerated integer value to corresponding string value
     """
+    column_type = object
     def __init__(self, name, asn_id, mapping, **kwargs):
         """
 
@@ -94,7 +95,7 @@ class StringField(ASN1BERField):
     """
     # Doesnt appear to be much performance difference between using value or column converter
     value_converter = BytesToString()
-    # column_converter = BytesColumnToString()
+    column_type = object
 
 
 class DateField(ASN1BERField):
@@ -149,12 +150,14 @@ class TBCDField(ASN1BERField):
     """
     #column_converter = Apply(binary.TBCDParser())
     value_converter = TBCDBytesToString()
+    column_type = object
 
 
 class IPAddressField(ASN1BERField):
     """
     For decoding binary 4-byte IPv4 or 16-byte IPv6 address to string representation
     """
+    column_type = object
     def __init__(self, *args, version='ipv4', **kwargs):
         if version == 'ipv4':
             converter = BinaryToIPv4Address()

@@ -145,24 +145,24 @@ class Fork(CompoundOperation):
             outputs.append(value)
         return outputs
 
-    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None, transparent=None):
-        """
-
-        :param dict profile_data:
-        :param Operation actual_caller:
-        :param Operation proxy_caller:
-        :param bool transparent:
-        :return:
-        """
-        # Force normally 'transparent' fork operations (e.g. THEN) to add their own profile data so each fork is bundled
-        # Add profile data for self
-        super().add_profile_data(profile_data, actual_caller=actual_caller, proxy_caller=proxy_caller)
-        # Add profile data for wrapped operations
-        for operation in self.wrapped_operations:
-            operation.add_profile_data(profile_data,
-                                       actual_caller=self,
-                                       proxy_caller=self,
-                                       transparent=False)
+    # def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None, transparent=None):
+    #     """
+    #
+    #     :param dict profile_data:
+    #     :param CompoundOperation actual_caller:
+    #     :param CompoundOperation proxy_caller:
+    #     :param bool transparent:
+    #     :return:
+    #     """
+    #     # Force normally 'transparent' fork operations (e.g. THEN) to add their own profile data so each fork is bundled
+    #     # Add profile data for self
+    #     super().add_profile_data(profile_data, actual_caller=actual_caller, proxy_caller=proxy_caller)
+    #     # Add profile data for wrapped operations
+    #     for operation in self.wrapped_operations:
+    #         operation.add_profile_data(profile_data,
+    #                                    actual_caller=self,
+    #                                    proxy_caller=self,
+    #                                    transparent=False)
 
     def add_to_graph(self, graph):
         from pydot import Edge, Node

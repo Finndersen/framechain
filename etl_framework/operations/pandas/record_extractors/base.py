@@ -4,6 +4,7 @@ from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
 from etl_framework.operations.pandas.transforms import ToInteger, SetColumnTimezone, StringColumnToDatetime
 import logging
 from time import perf_counter
+import numpy as np
 
 log = logging.getLogger(__name__)
 
@@ -46,18 +47,19 @@ class BaseDataFrameGenerator(CompoundOperation):
             dataframe = self.create_dataframe(input_data)
             #  Add any missing fields as Null column
             for field in self.fields:
-                if field.name not in dataframe.columns:
-                    dataframe[field.name] = None
+                if field.name not in dataframe.columns and field.add_if_missing:
+                    dataframe[field.name] = np.nan
 
         if not dataframe.empty:
             # Perform field vector conversions
             with LogDuration(log, 'Performing vector field conversions...'):
                 for field in self.fields:
-                    dataframe[field.name] = self.run_wrapped_operation(field, dataframe[field.name])
+                    if field.name in dataframe.columns:
+                        dataframe[field.name] = field.convert_column(dataframe[field.name])
 
         # Order columns as input field order
         if self.fields:
-            dataframe = dataframe[[field.name for field in self.fields]]
+            dataframe = dataframe[[field.name for field in self.fields if field.name in dataframe.columns]]
 
         return dataframe
 
@@ -72,19 +74,19 @@ class BaseDataFrameGenerator(CompoundOperation):
     def get_execute_time(self):
         """
         Get of just this operation (not including any wrapped sub-operations)
-        Subtract both Field value convert and column convert times
+        Need to get execution time of fields because do not have visibility of value conversion execute time
         Assumes Field instances are not re-used elsewhere...
         :return:
         """
         exec_time = self.get_cumulative_time()
-        for field in self.fields:
-            exec_time -= field.get_cumulative_time()
+        for op in self.wrapped_operations:
+            exec_time -= op.get_cumulative_time()
         return exec_time
 
     def get_wrapped_operation_stats(self, wrapped_operation):
         """
         BaseDataFrameGenerator does not have visibility of Field.convert_value execution time
-        Assume this is the only caller of the field instance and return full field stats
+        Assume this is the only caller of the field instance and return full execution stats
         :param wrapped_operation:
         :return:
         """
@@ -99,21 +101,26 @@ class InputField(OperatorWrapperMixin, BaseOperation):
     """
     column_converter = None
     value_converter = None
+    column_type = None
     EMPTY_VALUES = {''}   # Values which will be converted to None
 
-    def __init__(self, name, mandatory=False, column_converter=None, value_converter=None):
+    def __init__(self, name, mandatory=False, column_converter=None, value_converter=None, column_type=None, add_if_missing=True):
         """
 
         :param str name: Name of field
         :param bool mandatory: Whether field is mandatory
         :param callable column_converter: Custom converter function which takes column of raw field values, and returns column of converted values
         :param callable value_converter: Custom function which converts takes raw field value before Dataframe is constructed
+        :param column_type: Data type to convert column to after other conversions
+        :param bool add_if_missing: Whether to create an empty column for this field if there are no values
         """
         super().__init__()
         self.name = name
         self.mandatory = mandatory
         self.column_converter = self.wrap_operation(column_converter or self.column_converter, none_allowed=True)
         self.value_converter = self.wrap_operation(value_converter or self.value_converter, none_allowed=True)
+        self.column_type = column_type or self.column_type
+        self.add_if_missing = add_if_missing
 
     def action(self, column):
         """
@@ -125,6 +132,8 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         if self.column_converter:
             column = self.run_wrapped_operation(self.column_converter, column)
 
+        if self.column_type:
+            column = column.astype(self.column_type, copy=False)
         return column
 
     def convert_column(self, column):
@@ -133,7 +142,7 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         :param column: Pandas series containing raw field values
         :return:
         """
-        self(column)
+        return self(column)
 
     def convert_value(self, value):
         """
@@ -151,7 +160,7 @@ class InputField(OperatorWrapperMixin, BaseOperation):
             if self.mandatory:
                 raise MandatoryFieldError('Mandatory field: {} has empty value'.format(self))
         else:
-            self.validate_raw_value(value)
+            # self.validate_raw_value(value)
             if self.value_converter:
                 value = self.run_wrapped_operation(self.value_converter, value)
 
