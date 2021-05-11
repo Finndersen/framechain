@@ -25,9 +25,7 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
         :param record_processor: Optional callable used to process each record dictionary before being provided to DataFrame initialisation
         """
         self.asn_decoder = asn1_decoder.ASN1BERDecoder(record_types, fields, head_trailer_lengths)
-        # Add Record Type and number fields so they are not removed during column re-ordering
-        super().__init__(fields + [ASN1BERField(self.asn_decoder.RECORDTYPE_FIELD_NAME, None),
-                                   ASN1BERField(self.asn_decoder.RECORDNUMBER_FIELD_NAME, None)])
+        super().__init__(fields)
 
         self.record_processor = self.wrap_operation(record_processor, none_allowed=True)
 
