@@ -23,6 +23,7 @@ class LocalFileReader(Operation):
         :param bool binary: Whether to read file data as binary
         :param open_kwargs:
         """
+        super().__init__()
         if compression and compression not in self.COMPRESSION_TYPES.values():
             self.error(ValueError, 'Supported compression types are: {}'.format(self.COMPRESSION_TYPES))
         self.compression = compression
@@ -63,6 +64,7 @@ class STDINReader(Operation):
 
         :param bool binary: Whether to read STDIN as binary
         """
+        super().__init__()
         self.binary = binary
 
     def action(self):
@@ -84,6 +86,7 @@ class Read(Operation):
 
         :param bool close: Whether to close file object after reading content
         """
+        super().__init__()
         self.close = close
 
     def action(self, file_reader):
@@ -124,6 +127,7 @@ class DecompressData(Operation):
 
         :param str format: Compression format (GZIP, ZLIB, DEFLATE)
         """
+        super().__init__()
         if format not in self.COMPRESS_FORMATS:
             self.error(ValueError, 'Compression format must be one of: {}'.format(list(self.COMPRESS_FORMATS.keys())))
         self.format = format

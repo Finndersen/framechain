@@ -13,6 +13,7 @@ class In(Operation):
 
         :param collection: Collection of values or object to test if value is included in
         """
+        super().__init__()
         self.collection = set(collection)
 
     def action(self, value):
@@ -32,6 +33,7 @@ class Is(Operation):
 
         :param other_value: Other value to compare to
         """
+        super().__init__()
         self.other_value = other_value
 
     def action(self, value):
@@ -51,6 +53,7 @@ class StringContains(Operation):
         :param str pattern: search pattern
         :param bool is_regex: Whether pattern is regex
         """
+        super().__init__()
         self.pattern = re.compile(pattern) if is_regex else pattern
         self.is_regex = is_regex
 
@@ -81,6 +84,7 @@ class IsInstance(Operation):
 
         :param instance_type:
         """
+        super().__init__()
         self.instance_type = instance_type
 
     def action(self, value):

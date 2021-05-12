@@ -16,6 +16,7 @@ class StringColumnSplit(ColumnOperation):
         :param bool expand:
         :param bool right: Whether to split on right side
         """
+        super().__init__()
         self.pat = pat
         self.n = n
         self.expand = expand
@@ -42,6 +43,7 @@ class Replace(ColumnOperation):
         :param str or callable replace: Replacement string or a callable. The callable is passed the regex match object
         and must return a replacement string to be used
         """
+        super().__init__()
         self.pattern = pattern
         self.replace = replace
 
@@ -101,6 +103,7 @@ class ColumnRegexFindall(ColumnOperation):
         :param str pattern: Regex pattern to match on
         :param flags: Extra flags for regex library
         """
+        super().__init__()
         self.flags = flags
         self.pattern = pattern
 
@@ -121,6 +124,7 @@ class StringColumnJoin(ColumnOperation):
 
         :param sr delimiter: Delimiter to use for join
         """
+        super().__init__()
         self.delimiter = delimiter
 
     def action(self, string_series):
@@ -139,6 +143,7 @@ class BytesColumnToString(ColumnOperation):
 
         :param str encoding:
         """
+        super().__init__()
         self.encoding = encoding
 
     def action(self, bytes_column):

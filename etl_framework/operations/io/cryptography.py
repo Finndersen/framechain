@@ -15,6 +15,7 @@ class DecryptDataAESGCM(Operation):
 
         :param str password: Text password used to decrypt data
         """
+        super().__init__()
         self.password = password
 
     def action(self, encrypted_data):

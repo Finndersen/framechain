@@ -40,6 +40,7 @@ class ContextValue(Operation):
 
         :param str key_name: key of value to extract from context dictionary
         """
+        super().__init__()
         self.key_name = key_name
 
     def action(self, *args, **kwargs):
@@ -70,6 +71,7 @@ class Map(Operation):
         Map.ORIGINAL: to pass through original value,
         Other: Use this value as default
         """
+        super().__init__()
         if missing_value == self.ORIGINAL:
             dict_type = DictWithPassthrough()
         elif missing_value == self.ERROR:
@@ -141,6 +143,7 @@ class GetAttr(Operation):
         :param str attr_name: Attribute name to return
         :param default: Default value to return if attribute does not exist
         """
+        super().__init__()
         self.default = default
         self.attr_name = attr_name
 
@@ -164,6 +167,7 @@ class Filter(Operation):
 
         :param filter_func: Function to check each value. Returns true for values to be kept
         """
+        super().__init__()
         self.filter_func = filter_func
 
     def action(self, values):

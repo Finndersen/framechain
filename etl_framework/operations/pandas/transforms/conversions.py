@@ -24,6 +24,7 @@ class AsType(ColumnOperation):
 
         :param str (numpy type) or python type to_type:
         """
+        super().__init__()
         self.to_type = to_type
         self.ignore_errors = ignore_errors
 

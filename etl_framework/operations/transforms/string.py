@@ -12,6 +12,7 @@ class RegexExtract(Operation):
         :param str or re.pattern pattern: Regex pattern to match on
         :param flags: Extra flags for regex library
         """
+        super().__init__()
         if isinstance(pattern, str):
             pattern = re.compile(pattern)
 

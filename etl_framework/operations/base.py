@@ -5,6 +5,7 @@ import sys
 import operator, logging, marshal, tempfile
 from time import perf_counter, sleep
 from collections import defaultdict
+import functools
 
 log = logging.getLogger(__name__)
 
@@ -13,6 +14,29 @@ class OperationError(Exception):
     def __init__(self, operation, exc):
         message = 'Exception occured during operation: {}\n{}: {}'.format(operation, type(exc).__name__, str(exc))
         super().__init__(message)
+
+
+def profile(method):
+    """
+    Decorator used to profile an operation method
+    :param method:
+    :return:
+    """
+    @functools.wraps(method)
+    def profiled_method(self, *args, **kwargs):
+        if self.profiling_enabled and not self.profiling_active:
+            self.profiling_active = True
+            start_time = perf_counter()
+            result = method(*args, **kwargs)
+            self.call_count += 1
+            self._cumulative_time += perf_counter() - start_time
+            self.profiling_active = False
+        else:
+            result = method(*args, **kwargs)
+
+        return result
+
+    return profiled_method
 
 
 class OperationOperators(object):
@@ -133,11 +157,12 @@ class BaseOperation(object):
      - Comparison (>, <, <=, >=, ==)
 
     """
-    # Mapping of valid input types to valid output types (for when this class is called)
-    # calling_translations = None
-    call_count = 0
-    _cumulative_time = 0
-    profiling_enabled = False
+
+    def __init__(self):
+        self.profiling_enabled = False
+        self.profiling_active = False
+        self.call_count = 0
+        self._cumulative_time = 0
 
     def error(self, exc_type, message):
         """
@@ -288,6 +313,7 @@ class BaseOperation(object):
         return ('', id(self), desc)
 
     def clear_profile_stats(self):
+        self.profiling_active = False
         self._cumulative_time = 0
         self.call_count = 0
 
@@ -735,6 +761,7 @@ class Value(Operation):
     }
 
     def __init__(self, value):
+        super().__init__()
         self.value = value
 
     def action(self, *args, **kwargs):
@@ -758,6 +785,7 @@ class Lambda(Operation):
         :param str description: Description of what function does
         :param type_translation: Optionally provide type translation of custom function
         """
+        super().__init__()
         self.func = func
         self._description = description or func.__name__
         if type_translation:
@@ -791,3 +819,5 @@ def convert_to_operation(val, none_allowed=False, wrap_value=True):
         return Value(val)
     else:
         raise ValueError('Value is not callable: {}'.format(val))
+
+

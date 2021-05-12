@@ -23,6 +23,7 @@ class StringColumnToDatetime(ColumnOperation):
         """
         :param str format: Datetime string format as strptime() format code
         """
+        super().__init__()
         self.format = format
 
     def action(self, column):
@@ -44,6 +45,7 @@ class ToTimedelta(ColumnOperation):
 
         :param str units: Units of timedelta
         """
+        super().__init__()
         if units not in self.VALID_UNITS:
             self.error(ValueError, 'Invalid timedelta units: "{}". Choose from: {}'.format(units, self.VALID_UNITS))
         self.units = units
@@ -64,6 +66,7 @@ class TimestampFromColumns(Operation):
     """
 
     def __init__(self, timestamp_components=None):
+        super().__init__()
         if timestamp_components is None:
             timestamp_components = ['year', 'month', 'day', 'hour', 'minute', 'second']
         self.timestamp_components = timestamp_components
@@ -86,6 +89,7 @@ class SetColumnTimezone(ColumnOperation):
         :param str, int, tzinfo, None timezone: Timezone to apply to all values.
         Use None to remove timezone information but not change timestamp
         """
+        super().__init__()
         self.timezone = convert_timezone(timezone, allow_none=True)
 
     def action(self, timestamp_column):
@@ -114,6 +118,7 @@ class SetTimezone(Operation):
         :param str, int, tzinfo, False timezone: Timezone to apply to all values.
         Use False to remove timezone information but not change timestamp
         """
+        super().__init__()
         self.timezone = convert_timezone(timezone, allow_none=True)
 
     def action(self, timestamp, timezone=None):
@@ -149,6 +154,7 @@ class ConvertColumnTimezone(ColumnOperation):
             If None, will convert to UTC and remove timezone information
         :param bool different_timezones: Whether or not column contains timestamps in varying timezones
         """
+        super().__init__()
         self.timezone = convert_timezone(timezone, allow_none=True)
         self.different_timezones = different_timezones
 
@@ -187,6 +193,7 @@ class ConvertTimezone(Operation):
         :param str, int, tzinfo, None timezone: Timezone to convert to (default to UTC).
         If None, will convert to UTC and remove timezone information
         """
+        super().__init__()
         self.timezone = convert_timezone(timezone, allow_none=True)
 
     def action(self, timestamp):
@@ -212,6 +219,7 @@ class DateTimeProperty(ColumnOperation):
     """
 
     def __init__(self, property_name):
+        super().__init__()
         self.property_name = property_name
 
     def action(self, value):
@@ -236,6 +244,7 @@ class DatetimeToString(ColumnOperation):
 
         :param str format: Datetime format string
         """
+        super().__init__()
         self.format = format
 
     def action(self, series):
@@ -251,22 +260,3 @@ class TimedeltaToSeconds(ColumnOperation):
     """
     def action(self, timedelta_column):
         return timedelta_column.dt.total_seconds()
-
-
-# class DateAndTimeToDatetime(object):
-#     """
-#     Create pandas datetime by joining Date and Time fields
-#     Uses StringToDatetime converter, so can also specify original_timezone and output_timezone
-#
-#     This transform could actually be completely replaced using operators and wrappers etc
-#     """
-#     def __init__(self, date_format='%Y-%m-%d', time_format='%H:%M:%S', **converter_kwargs):
-#         """
-#         :param str date_format: format of date
-#         :param str time_format: format of time
-#         :param converter_kwargs: extra kwargs to pass too StringToDatetime initialisation (e.g. original and output timezone)
-#         """
-#         self.datetime_converter = StringToDatetime(format=date_format + ' ' + time_format, **converter_kwargs)
-#
-#     def __call__(self, date_column, time_column):
-#         return self.datetime_converter(date_column.astype(str) + ' ' + time_column.astype(str))

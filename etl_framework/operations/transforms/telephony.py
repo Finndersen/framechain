@@ -57,6 +57,7 @@ class ConvertCellID(Operation):
 
         :param bool ecgi: Whether cell ID is ECGI (will ignore spare digit at position 7)
         """
+        super().__init__()
         self.ecgi = ecgi
 
     def action(self, str_value):

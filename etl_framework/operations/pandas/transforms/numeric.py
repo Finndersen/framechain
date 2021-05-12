@@ -29,6 +29,7 @@ class ToNumeric(ColumnOperation):
         If ‘coerce’, then invalid parsing will be set as NaN.
         If ‘ignore’, then invalid parsing will return the input.
         """
+        super().__init__()
         self.downcast = downcast
         self.errors = errors
 
@@ -52,6 +53,7 @@ class ToInteger(ColumnOperation):
         :param bool large: Whether to convert to 64 bit integer (True) or 32 bit (False)
         :param bool ignore_errors: Whether to ignore casting errors
         """
+        super().__init__()
         int_type = 'Int64' if large else 'Int32'
         self.converter = If(lambda s: not s.isnull().all(),
                             If(lambda s: is_numeric_dtype(s.dtype),

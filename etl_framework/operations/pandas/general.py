@@ -20,6 +20,7 @@ class Field(Operation):
 
         :param field_name: Name of column to select
         """
+        super().__init__()
         if not isinstance(field_name, str):
             self.error(ETLConfigurationError, 'Field name must be string')
         self.field_name = field_name
@@ -154,6 +155,7 @@ class ColumnOfValue(Operation):
 
         :param value: static value or callable which returns scalar value
         """
+        super().__init__()
         self.value = value
 
     def action(self, vector):
@@ -221,6 +223,7 @@ class MergeRowValues(Operation):
         :param func filter_function: Filter function to ignore field values, takes field value and returns False if value
         should be ignored. Ignores null values by default
         """
+        super().__init__()
         if len(field_names) < 2:
             raise ValueError('Must provide at least 2 field names')
         self.field_names = field_names

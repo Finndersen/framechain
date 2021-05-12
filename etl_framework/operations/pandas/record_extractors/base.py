@@ -103,16 +103,19 @@ class InputField(OperatorWrapperMixin, BaseOperation):
     """
     column_converter = None
     value_converter = None
+    ignore_condition = None
     column_type = None
     EMPTY_VALUES = {''}   # Values which will be converted to None
 
-    def __init__(self, name, mandatory=False, column_converter=None, value_converter=None, column_type=None, add_if_missing=True):
+    def __init__(self, name, mandatory=False, column_converter=None, value_converter=None, ignore_condition=None,
+                 column_type=None, add_if_missing=True):
         """
 
         :param str name: Name of field
         :param bool mandatory: Whether field is mandatory
         :param callable column_converter: Custom converter function which takes column of raw field values, and returns column of converted values
         :param callable value_converter: Custom function which converts takes raw field value before Dataframe is constructed
+        :param callable ignore_condition: Takes raw value and if returns true, result will be None and value conversion is skipped
         :param column_type: Data type to convert column to after other conversions
         :param bool add_if_missing: Whether to create an empty column for this field if there are no values
         """
@@ -121,6 +124,7 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         self.mandatory = mandatory
         self.column_converter = self.wrap_operation(column_converter or self.column_converter, none_allowed=True)
         self.value_converter = self.wrap_operation(value_converter or self.value_converter, none_allowed=True)
+        self.ignore_condition = self.wrap_operation(ignore_condition or self.ignore_condition, none_allowed=True)
         self.column_type = column_type or self.column_type
         self.add_if_missing = add_if_missing
 
@@ -130,6 +134,10 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         :param column: Pandas series containing raw field values
         :return:
         """
+        # Check if any values are missing for mandatory field
+        if self.mandatory and column.isnull().values.any():
+            raise MandatoryFieldError('Mandatory field: {} has missing values'.format(self))
+
         # Perform vectorised value conversion
         if self.column_converter:
             column = self.run_wrapped_operation(self.column_converter, column)
@@ -149,22 +157,23 @@ class InputField(OperatorWrapperMixin, BaseOperation):
     def convert_value(self, value):
         """
         Perform conversion and validation of raw field value
-        :param value:
+        :param value: raw field value
         :return:
         """
         if self.profiling_enabled:
             start_time = perf_counter()
 
+        # TODO: Could probably do better implementation with a @profile method decorator and able to return early,
+        #  but will add function call overhead..
         if value in self.EMPTY_VALUES:
             value = None
 
-        if value is None:
-            if self.mandatory:
-                raise MandatoryFieldError('Mandatory field: {} has empty value'.format(self))
-        else:
-            # self.validate_raw_value(value)
-            if self.value_converter:
-                value = self.run_wrapped_operation(self.value_converter, value)
+        if value is not None and self.ignore_condition and self.run_wrapped_operation(self.ignore_condition, value):
+            value = None
+
+        # Convert value if present
+        if value is not None and self.value_converter:
+            value = self.run_wrapped_operation(self.value_converter, value)
 
         if self.profiling_enabled:
             self._cumulative_time += perf_counter() - start_time

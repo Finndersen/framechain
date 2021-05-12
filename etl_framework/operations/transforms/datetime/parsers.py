@@ -62,6 +62,7 @@ class RegexDateTimeParser(Operation):
         """
         :param str regex_pattern: Regex string pattern for timestamp string
         """
+        super().__init__()
         self.pattern = re.compile(regex_pattern) if isinstance(regex_pattern, str) else regex_pattern
         # Validate regex has required components
         group_names = self.pattern.groupindex
@@ -145,6 +146,7 @@ class PresetDateTimeParser(Operation):
     }
 
     def __init__(self, datetime_format):
+        super().__init__()
         self.datetime_format = datetime_format
         try:
             self.parse_func = self.datetime_formats[datetime_format]
@@ -164,6 +166,7 @@ class BasicDatetimeParser(Operation):
     Basic datetime parser using datetime.strptime()
     """
     def __init__(self, time_format):
+        super().__init__()
         self.time_format = time_format
 
     def action(self, value):

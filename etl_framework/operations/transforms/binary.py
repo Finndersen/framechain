@@ -10,6 +10,7 @@ class BytesToString(Operation):
     Decode byte value to string
     """
     def __init__(self, encoding="utf-8"):
+        super().__init__()
         self.encoding = encoding
 
     def action(self, byte_str):
@@ -21,6 +22,7 @@ class StringToBytes(Operation):
     Encode string value to Bytes
     """
     def __init__(self, encoding="utf-8"):
+        super().__init__()
         self.encoding = encoding
 
     def action(self, string):
@@ -40,6 +42,7 @@ class BytesToInteger(Operation):
     Convert bytes to integer
     """
     def __init__(self, byteorder='big', signed=False):
+        super().__init__()
         self.byteorder = byteorder
         self.signed = signed
 
@@ -59,6 +62,7 @@ class BytesToHexString(Operation):
 
         :param int hex_length: Expected length of output hex string. If specified and output is longer, leading zeros will be removed
         """
+        super().__init__()
         self.hex_length = hex_length
 
     def action(self, value):
@@ -85,6 +89,7 @@ class IntegerToBytes(Operation):
         Minimum required length will be determined automatically if not provided
         :param str byteorder:
         """
+        super().__init__()
         self.bytes_length = bytes_length
         self.byteorder = byteorder
 

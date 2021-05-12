@@ -44,6 +44,7 @@ class DropColumns(DataframeOperation):
         :param str columns: column names to drop
         :param bool error_if_missing: Whether to raise an error if any of specified columns are missing
         """
+        super().__init__()
         if not all(isinstance(column_name, (str, int)) for column_name in columns):
             raise TypeError('Column labels must be string or integer')
         self.columns = list(columns)
@@ -66,6 +67,7 @@ class RenameColumns(DataframeOperation):
 
         :param str rename_mapping: mapping of old column names to new ones
         """
+        super().__init__()
         self.rename_mapping = rename_mapping
 
     def action(self, dataframe):
@@ -85,6 +87,7 @@ class Sort(DataframeOperation):
 
         :param sort_by: Name or list of names to sort by
         """
+        super().__init__()
         self.sort_by = sort_by
         self.ascending = ascending
 
@@ -105,6 +108,7 @@ class MultipleFillNA(DataframeOperation):
         :param str/list columns: List of column names or single column name
         :param value: static value or callable which returns scalar value
         """
+        super().__init__()
         self.value = value
         if isinstance(columns, str):
             columns = [columns]
@@ -157,6 +161,7 @@ class Explode(DataframeOperation):
         :param str column: Column to apply explode on
         :param bool reset_index: Whether to reset index after exploding (removes duplicate index values)
         """
+        super().__init__()
         self.column = column
         self.reset_index = reset_index
 
@@ -187,6 +192,7 @@ class Combine(DataframeOperation):
         :param func: Function that takes two scalars as inputs and returns a combined element.
         :param fill_value:
         """
+        super().__init__()
         self.column1_name = column1_name
         self.column2_name = column2_name
         self.func = func
@@ -212,6 +218,7 @@ class CombineFirst(DataframeOperation):
         :param str first_column: First field to combine
         :param str second_column: Second field to combine
         """
+        super().__init__()
         self.first_column = first_column
         self.second_column = second_column
 
@@ -232,6 +239,7 @@ class SetColumnOrder(DataframeOperation):
 
         :param list columns: List of column names
         """
+        super().__init__()
         self.columns = columns
 
     def action(self, dataframe):

@@ -18,7 +18,7 @@ class BinaryPositionSeperatedRecordExtractor(BaseDataFrameGenerator):
         self.record_length = record_length
         self.record_skip_check = record_skip_check
 
-    def __call__(self, data_file):
+    def action(self, data_file):
         records = []
         # Loop through lines in file
         for recordline in self.read_binary_chunk(data_file):

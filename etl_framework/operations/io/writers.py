@@ -21,6 +21,7 @@ class BaseFileWriter(Operation):
 
         :param str output_path: Output file path
         """
+        super().__init__()
         self.output_path = output_path
 
     def action(self, file_data, output_path=None):

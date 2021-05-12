@@ -21,6 +21,7 @@ class Validate(Operation):
         :param validation_condition: callable which takes dataframe and returns Boolean Series
         :param message: Message describing validation condition
         """
+        super().__init__()
         self.validation_condition = validation_condition
         self.message = message or str(validation_condition)
 

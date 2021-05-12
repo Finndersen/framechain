@@ -23,6 +23,7 @@ class IsIn(ColumnOperation):
 
         :param list/tuple/set values: Values to match on
         """
+        super().__init__()
         self.equate_values = values
 
     def action(self, column):
@@ -54,6 +55,7 @@ class StringContains(ColumnOperation):
         :param str pattern: search pattern
         :param bool regex: Whether pattern is regex
         """
+        super().__init__()
         self.pattern = pattern
         self.regex = regex
 
@@ -79,6 +81,7 @@ class FieldExists(Operation):
 
         :param field_name: Name of column to select
         """
+        super().__init__()
         if not isinstance(field_name, str):
             self.error(ETLConfigurationError, 'Field name must be string')
         self.field_name = field_name

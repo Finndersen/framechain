@@ -12,6 +12,7 @@ class IntToHexString(Operation):
 
         :param int hex_length: Expected length of output hex string. If specified and output is shorter, will be zero-padded as required
         """
+        super().__init__()
         self.hex_length = hex_length
 
     def action(self, value):

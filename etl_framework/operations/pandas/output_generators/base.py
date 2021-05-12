@@ -16,6 +16,7 @@ class BaseDataframeExporter(Operation):
         :param create_for_empty: Whether to create output file when dataframe is empty
         :param sequence columns: sequence of field names to export
         """
+        super().__init__()
         self.create_for_empty = create_for_empty
         self.columns = columns
 
