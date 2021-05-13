@@ -10,7 +10,7 @@ class TBCDBytesToString(Operation):
     def action(self, value):
         # Nibble swap each octet and convert to hex string
         hex_str = bytes((((x & 0x0F) << 4) + (x >> 4)) for x in value).hex()
-        # Strip Trailing 'f'
+        # Strip Trailing 'f' (slightly faster than rstrip('f'))
         if hex_str[-1] == 'f':
             hex_str = hex_str[:-1]
         return hex_str

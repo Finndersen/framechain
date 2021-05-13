@@ -1,18 +1,16 @@
 from etl_framework.operations.pandas import StringColumnToDatetime, ColumnMap, BytesColumnToString, AsType
+from etl_framework.operations import profiled
 from etl_framework.operations.transforms import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, BytesToDateString, BytesToTime, BytesToTimeString, \
     BytesToHexString, TBCDBytesToString, BinaryToIPv4Address, BinaryToIPv6Address, BCDTimestampToString
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
 from etl_framework.exceptions import ETLFieldError
 
 
-IGNORE_NOTHING = object()
-
-
 class ASN1BERField(InputField):
     """
     Class used to define a BER ASN1 field
     """
-    def __init__(self, name, asn_ids, aggregator=None, ignore_value=IGNORE_NOTHING, **kwargs):
+    def __init__(self, name, asn_ids, aggregator=None, **kwargs):
         """
 
         :param str name: name of ASN1 field
@@ -21,11 +19,9 @@ class ASN1BERField(InputField):
             - string of ASN1 Id of field (hyphen-seperated field IDs, applies to all record types)
         :param BaseFieldSetter aggregator: Object which defines logic for how field values are set and aggregated when there
         are multiple (for when field occurs multiple times, e.g. in SEQUENCE OF)
-        :param ignore_value: If converted field value is equal to this, field value will not be set
         """
         self.asn_ids = asn_ids
         self.aggregator = aggregator
-        self.ignore_value = ignore_value
         super().__init__(name, **kwargs)
         if aggregator and self.column_converter:
             raise ETLFieldError('Cannot specify aggregator on field with column converter')
@@ -43,6 +39,7 @@ class ASN1BERField(InputField):
     def applicable_to_record_type(self, record_type):
         return isinstance(self.asn_ids, str) or record_type.name in self.asn_ids
 
+    @profiled
     def add_to_record(self, record, raw_value):
         """
         Add new raw field value to record dictionary
@@ -51,13 +48,12 @@ class ASN1BERField(InputField):
         :param raw_value:
         :return:
         """
-        converted_value = self.convert_value(raw_value)
+        converted_value = self(raw_value)
         # Set field value value in record
-        if converted_value != self.ignore_value:
-            if self.aggregator:
-                self.aggregator.add_to_record(record, self.name, converted_value)
-            else:
-                record[self.name] = converted_value
+        if self.aggregator:
+            self.aggregator.add_to_record(record, self.name, converted_value)
+        else:
+            record[self.name] = converted_value
 
 
 class BooleanField(ASN1BERField):

@@ -1,5 +1,5 @@
 from etl_framework.utils import LogDuration
-from etl_framework.operations import BaseOperation, OperatorWrapperMixin, CompoundOperation
+from etl_framework.operations import BaseOperation, OperatorWrapperMixin, CompoundOperation, profiled
 from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
 from etl_framework.operations.pandas.transforms import ToInteger, SetColumnTimezone, StringColumnToDatetime
 import logging
@@ -75,7 +75,7 @@ class BaseDataFrameGenerator(CompoundOperation):
 
     def get_execute_time(self):
         """
-        Get of just this operation (not including any wrapped sub-operations)
+        Get execute time of just this operation (not including any wrapped sub-operations)
         Need to get execution time of fields because do not have visibility of value conversion execute time
         Assumes Field instances are not re-used elsewhere...
         :return:
@@ -128,7 +128,26 @@ class InputField(OperatorWrapperMixin, BaseOperation):
         self.column_type = column_type or self.column_type
         self.add_if_missing = add_if_missing
 
-    def action(self, column):
+    def action(self, value):
+        """
+        perform vectorised value conversion for field
+        :param value: raw field value
+        :return:
+        """
+        if value in self.EMPTY_VALUES:
+            return None
+
+        if self.ignore_condition and self.run_wrapped_operation(self.ignore_condition, value):
+            return None
+
+        # Convert value if present
+        if value is not None and self.value_converter:
+            value = self.run_wrapped_operation(self.value_converter, value)
+
+        return value
+
+    @profiled
+    def convert_column(self, column):
         """
         perform vectorised value conversion for field
         :param column: Pandas series containing raw field values
@@ -146,47 +165,13 @@ class InputField(OperatorWrapperMixin, BaseOperation):
             column = column.astype(self.column_type, copy=False)
         return column
 
-    def convert_column(self, column):
-        """
-        perform vectorised value conversion for field
-        :param column: Pandas series containing raw field values
-        :return:
-        """
-        return self(column)
-
     def convert_value(self, value):
         """
         Perform conversion and validation of raw field value
         :param value: raw field value
         :return:
         """
-        if self.profiling_enabled:
-            start_time = perf_counter()
-
-        # TODO: Could probably do better implementation with a @profile method decorator and able to return early,
-        #  but will add function call overhead..
-        if value in self.EMPTY_VALUES:
-            value = None
-
-        if value is not None and self.ignore_condition and self.run_wrapped_operation(self.ignore_condition, value):
-            value = None
-
-        # Convert value if present
-        if value is not None and self.value_converter:
-            value = self.run_wrapped_operation(self.value_converter, value)
-
-        if self.profiling_enabled:
-            self._cumulative_time += perf_counter() - start_time
-            self.call_count += 1
-        return value
-
-    def validate_raw_value(self, value):
-        """
-        Validate non-null raw field value (before value conversion)
-        :param value:
-        :return:
-        """
-        pass
+        return self(value)
 
     def description(self):
         return '{}: "{}"'.format(type(self).__name__, self.name)

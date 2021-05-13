@@ -1,11 +1,15 @@
-from etl_framework.operations.types import TypeTranslations
-from etl_framework.utils import validate_callable, randomstring
-import pandas as pd
-import sys
-import operator, logging, marshal, tempfile
-from time import perf_counter, sleep
-from collections import defaultdict
 import functools
+import logging
+import marshal
+import operator
+import sys
+import tempfile
+from collections import defaultdict
+from time import perf_counter, sleep
+
+import pandas as pd
+
+from etl_framework.utils import randomstring
 
 log = logging.getLogger(__name__)
 
@@ -16,23 +20,27 @@ class OperationError(Exception):
         super().__init__(message)
 
 
-def profile(method):
+def profiled(method):
     """
     Decorator used to profile an operation method
+    Does not record execution details of profiling already active
+    Add this decorator to Operation methods that are not called within action() method
+    Makes things easier but adds about 10% extra overhead due to extra function call depending on context...
     :param method:
     :return:
     """
+
     @functools.wraps(method)
     def profiled_method(self, *args, **kwargs):
         if self.profiling_enabled and not self.profiling_active:
             self.profiling_active = True
             start_time = perf_counter()
-            result = method(*args, **kwargs)
+            result = method(self, *args, **kwargs)
             self.call_count += 1
             self._cumulative_time += perf_counter() - start_time
             self.profiling_active = False
         else:
-            result = method(*args, **kwargs)
+            result = method(self, *args, **kwargs)
 
         return result
 
@@ -41,7 +49,13 @@ def profile(method):
 
 class OperationOperators(object):
     """
-    Mixin to add operator overloading to allow operator chaining and numeric / binary / comparison operators
+    Implements operator overloading to allow operators to be applied to operation definitions
+    The same operator will be applied to the output of each operation when it is called
+    Supports:
+     - operations to be chained together (output of first goes to input of second) (>>)
+     - Perform bitwise operator (vector or scalar) on output of two operations (&, |, ~)
+     - Perform arithmetic (vector or scalar) on output of two operations (+, -, *, /)
+     - Comparison (>, <, <=, >=, ==)
     """
 
     # CHAINING
@@ -148,21 +162,13 @@ class OperationOperators(object):
 class BaseOperation(object):
     """
     Base operation class. An operation is anything that performs some kind of action in the ETL pipeline
-    Implements operator overloading to allow operators to be applied to operation definitions
-    The same operator will be applied to the output of each operation when it is called
-    Supports:
-     - operations to be chained together (output of first goes to input of second) (>>)
-     - Perform bitwise operator (vector or scalar) on output of two operations (&, |, ~)
-     - Perform arithmetic (vector or scalar) on output of two operations (+, -, *, /)
-     - Comparison (>, <, <=, >=, ==)
-
     """
 
     def __init__(self):
-        self.profiling_enabled = False
-        self.profiling_active = False
-        self.call_count = 0
-        self._cumulative_time = 0
+        self.profiling_enabled = False  # Whether profiling is enabled
+        self.profiling_active = False  # Whether profiling is currently active (profiled method is running)
+        self.call_count = 0  # Number of times operation has been called
+        self._cumulative_time = 0  # Cumulative execution time of operation
 
     def error(self, exc_type, message):
         """
@@ -174,16 +180,19 @@ class BaseOperation(object):
         raise exc_type('{} operation: {}'.format(type(self).__name__, message))
 
     def __call__(self, *args, **kwargs):
-        # Record execution time, etc..
         try:
-            if self.profiling_enabled:
+            # Re-implement @profiled logic here to avoid overhead of additional function call
+            if self.profiling_enabled and not self.profiling_active:
                 start_time = perf_counter()
+                self.profiling_active = True
                 result = self.action(*args, **kwargs)
                 self.call_count += 1
+                self.profiling_active = False
                 self._cumulative_time += perf_counter() - start_time
                 return result
             else:
                 return self.action(*args, **kwargs)
+
         except Exception as exc:
             exc_result = self.handle_exception(exc, *args, **kwargs)
             # Re-raise exception with operation details if not handled
@@ -300,7 +309,7 @@ class BaseOperation(object):
         Get of just this operation (not including any wrapped sub-operations)
         :return:
         """
-        return self._cumulative_time
+        return self.get_cumulative_time()
 
     @property
     def pstat_id(self):
@@ -378,12 +387,13 @@ class OperatorWrapperMixin(BaseOperation):
     Inherits from BaseOperation so it does not have Operator overloads,
     and can be used with Field operations which do not support operators
     """
+
     def __init__(self):
         """
 
         :param Operation wrapped_operations: operations which are encapsulated within (called by) this one
         """
-        self._wrapped_execution_stats = defaultdict(lambda : [0,0,0,0])
+        self._wrapped_execution_stats = defaultdict(lambda: [0, 0, 0, 0])
         self._wrapped_execution_cumtime = 0
         self.wrapped_operations = []
         super().__init__()
@@ -417,11 +427,11 @@ class OperatorWrapperMixin(BaseOperation):
 
             self._wrapped_execution_cumtime += delta_cum_time
 
-            op_id = operation.pstat_id
-            self._wrapped_execution_stats[op_id][0] += 1
-            self._wrapped_execution_stats[op_id][1] += 1
-            self._wrapped_execution_stats[op_id][2] += delta_tot_time
-            self._wrapped_execution_stats[op_id][3] += delta_cum_time
+            wrapped_op_stats = self._wrapped_execution_stats[operation.pstat_id]
+            wrapped_op_stats[0] += 1
+            wrapped_op_stats[1] += 1
+            wrapped_op_stats[2] += delta_tot_time
+            wrapped_op_stats[3] += delta_cum_time
             return result
         else:
             return operation(*args, **kwargs)
@@ -470,7 +480,7 @@ class OperatorWrapperMixin(BaseOperation):
 
     def clear_profile_stats(self):
         super().clear_profile_stats()
-        self._wrapped_execution_stats = defaultdict(lambda : [0,0,0,0])
+        self._wrapped_execution_stats = defaultdict(lambda: [0, 0, 0, 0])
         self._wrapped_execution_cumtime = 0
         for operation in self.wrapped_operations:
             operation.clear_profile_stats()
@@ -593,7 +603,7 @@ class SlicedOperation(SingleOperandOperator):
         """
         if not isinstance(key, (slice, int)):
             self.error(ValueError, 'Indexing key must be integer or slice')
-        self.key=key
+        self.key = key
         super().__init__(op)
 
     def action(self, *args, **kwargs):
@@ -778,6 +788,7 @@ class Lambda(Operation):
     Can optionally provide type translation for compatability validation
 
     """
+
     def __init__(self, func, description=None, type_translation=None):
         """
 
@@ -819,5 +830,3 @@ def convert_to_operation(val, none_allowed=False, wrap_value=True):
         return Value(val)
     else:
         raise ValueError('Value is not callable: {}'.format(val))
-
-

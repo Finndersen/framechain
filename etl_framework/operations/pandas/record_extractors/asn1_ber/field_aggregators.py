@@ -2,13 +2,21 @@
 Objects which define logic for aggregating multiple field values in case of SEQUENCE OF
 """
 from etl_framework.exceptions import ETLFieldError
+IGNORE_NOTHING = object()
 
 
-class BaseFieldSetter(object):
+class BaseFieldValueAggregator(object):
     """
-    Base class for field setter which defines logic for how field values are set and aggregated when there are multiple
+    Base class for field aggregator which defines logic for how field values are set and aggregated when there are multiple
     (for when field occurs multiple times, e.g. in SEQUENCE OF)
     """
+    def __init__(self, ignore_value=IGNORE_NOTHING):
+        """
+
+        :param ignore_value: If converted field value is equal to this, field value will not be set
+        """
+        self.ignore_value = ignore_value
+
     def add_to_record(self, record, field_name, value):
         """
         Logic for adding new value to field. Value is initialised if there is no existing value, otherwise will be
@@ -18,6 +26,9 @@ class BaseFieldSetter(object):
         :param value:
         :return:
         """
+        if value == self.ignore_value:
+            return
+
         if field_name in record:
             record[field_name] = self.get_aggregate_value(record[field_name], value)
         else:
@@ -40,7 +51,7 @@ class BaseFieldSetter(object):
         raise NotImplementedError()
 
 
-class NoAggregation(BaseFieldSetter):
+class NoAggregation(BaseFieldValueAggregator):
     """
     Aggregator which does not support aggregation - error is raised if multiple values received for field
     """
@@ -51,7 +62,7 @@ class NoAggregation(BaseFieldSetter):
         raise ETLFieldError('Aggregation not supported')
 
 
-class SumAggregator(BaseFieldSetter):
+class SumAggregator(BaseFieldValueAggregator):
     """
     Aggregator which sums or concatenates values
     """
@@ -67,7 +78,7 @@ class SumAggregator(BaseFieldSetter):
         return existing_value + new_value
 
 
-class ListAggregator(BaseFieldSetter):
+class ListAggregator(BaseFieldValueAggregator):
     """
     Aggregator which creates sequence/list of values and appends new one
     """
@@ -90,7 +101,7 @@ class ListAggregator(BaseFieldSetter):
         return existing_value
 
 
-class SetAggregator(BaseFieldSetter):
+class SetAggregator(BaseFieldValueAggregator):
     """
     Aggregator which creates set of unique values
     """

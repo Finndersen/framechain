@@ -62,7 +62,7 @@ class RegexRecordExtractor(BaseDataFrameGenerator):
             if match:
                 match_groups = match.groups()
                 # Extract fields and perform value conversion
-                yield {field.name: field.convert_value(match_groups[field.group_index]) for field in self.fields}
+                yield {field.name: field(match_groups[field.group_index]) for field in self.fields}
             elif self.enforce_match:
                 # Raise error for mismatching record line
                 self.error(RegexMatchError, 'Line: "{}"" does not match pattern: "{}"'.format(recordline, self.regex_pattern.pattern))
