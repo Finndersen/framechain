@@ -49,6 +49,10 @@ class ASN1BERField(InputField):
         :return:
         """
         converted_value = self(raw_value)
+        # Do not add if None
+        if converted_value is None:
+            return
+
         # Set field value value in record
         if self.aggregator:
             self.aggregator.add_to_record(record, self.name, converted_value)
