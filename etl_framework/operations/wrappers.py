@@ -1,8 +1,8 @@
-from etl_framework.operations import Operation, CompoundOperation
+from etl_framework.operations import Operation
 from etl_framework.utils import Memoized, validate_callable
 
 
-class Cached(CompoundOperation):
+class Cached(Operation):
     """
     Transform wrapper which enables caching of output values
     Should wrap actual transform directly (not another TransformWrapper)
@@ -31,7 +31,7 @@ class Cached(CompoundOperation):
         return '({}) with caching'.format(self.operation)
 
 
-class MapArguments(CompoundOperation):
+class MapArguments(Operation):
     """
     Transform wrapper which allows multiple Operation input arguments to be generated from the provided input,
     using specified operation/transform logic for each argument
@@ -68,7 +68,7 @@ class MapArguments(CompoundOperation):
                                                 ', '.join(['{}=({})'.format(key,val) for key,val in self.arg_mapping.items()]))
 
 
-class Not(CompoundOperation):
+class Not(Operation):
     """
     Performs Not operator.
     """

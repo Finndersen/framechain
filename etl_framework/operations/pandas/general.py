@@ -1,4 +1,4 @@
-from etl_framework.operations import Operation, CompoundOperation
+from etl_framework.operations import Operation
 from etl_framework.operations.general import Map
 from etl_framework.exceptions import ETLConfigurationError
 import pandas as pd
@@ -47,7 +47,7 @@ class ColumnMap(Map, ColumnOperation):
         return value.map(self.mapping)
 
 
-class Apply(CompoundOperation):
+class Apply(Operation):
     """
     Wrapper which translates input from vector to scalar in Column axis
     e.g. Dataframe - > rows or Series -> values

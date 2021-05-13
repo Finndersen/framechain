@@ -6,7 +6,7 @@ import numpy as np
 from pandas.core.dtypes.common import is_datetime64_any_dtype
 
 from etl_framework.exceptions import ChangedDataTypError, ETLConfigurationError
-from etl_framework.operations import CompoundOperation
+from etl_framework.operations import Operation
 from etl_framework.operations.pandas import Field, IsNull, ConditionallyAppliedOperation
 
 
@@ -142,7 +142,7 @@ class ConvertColumn(SetColumn):
                                                                                   self.condition)
 
 
-class SetField(CompoundOperation):
+class SetField(Operation):
     """
     Sets a value of a row field, and returns the row
     Similar to SetColumn but works on a row Series

@@ -4,13 +4,13 @@ Operations to control flow of pipeline
 import copy
 import logging
 
-from etl_framework.operations import CompoundOperation, Pass, Operation
+from etl_framework.operations import Pass, Operation
 from etl_framework.utils import randomstring, LogDuration
 
 log = logging.getLogger(__name__)
 
 
-class If(CompoundOperation):
+class If(Operation):
     """
     Conditional statement to choose between executing one or another operation
     """
@@ -63,7 +63,7 @@ class If(CompoundOperation):
         return if_node, end_if_node
 
 
-class SwitchCase(CompoundOperation):
+class SwitchCase(Operation):
     """
     Operation which works like a Switch-Case statement.
     Contains a mapping of values to operations to run if input is equal to that value
@@ -110,7 +110,7 @@ class SwitchCase(CompoundOperation):
         return start_switch_node, end_switch_node
 
 
-class Fork(CompoundOperation):
+class Fork(Operation):
     """
     Transformation which allows creating a fork in the execution pipeline
     Causes input value to be copied and provided to multiple operation chains
@@ -198,7 +198,7 @@ class Collect(Operation):
         return tuple(iterable)
 
 
-class Iterate(CompoundOperation):
+class Iterate(Operation):
     """
     Iterates over provided iterator and execute provided operation on each element
     Returns a generator of result of each item after being transformed by operation

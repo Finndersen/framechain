@@ -1,9 +1,8 @@
 from etl_framework.utils import LogDuration
-from etl_framework.operations import BaseOperation, OperatorWrapperMixin, CompoundOperation, profiled
+from etl_framework.operations import BaseOperation, Operation, profiled
 from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
 from etl_framework.operations.pandas.transforms import ToInteger, SetColumnTimezone, StringColumnToDatetime
 import logging
-from time import perf_counter
 import numpy as np
 
 log = logging.getLogger(__name__)
@@ -12,7 +11,7 @@ log = logging.getLogger(__name__)
 ###########################################################################################
 # Record extractions take a file handle and yield records in the form of a list of field values
 ###########################################################################################
-class BaseDataFrameGenerator(CompoundOperation):
+class BaseDataFrameGenerator(Operation):
     """
     Base class for operation which extracts records from some input to generate a DataFrame
     Must define 'create_dataframe' method which takes some input and produces DataFrame with raw field values
@@ -95,7 +94,7 @@ class BaseDataFrameGenerator(CompoundOperation):
         return wrapped_operation.get_execution_stats()
 
 
-class InputField(OperatorWrapperMixin, BaseOperation):
+class InputField(BaseOperation):
     """
     Class for defining a field in a source data record which will correspond to a DataFrame column
     Performs vectorised value conversion on field column when called

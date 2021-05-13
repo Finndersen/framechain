@@ -36,7 +36,7 @@ def profiled(method):
             self.profiling_active = True
             start_time = perf_counter()
             result = method(self, *args, **kwargs)
-            self.call_count += 1
+            self._call_count += 1
             self._cumulative_time += perf_counter() - start_time
             self.profiling_active = False
         else:
@@ -167,8 +167,11 @@ class BaseOperation(object):
     def __init__(self):
         self.profiling_enabled = False  # Whether profiling is enabled
         self.profiling_active = False  # Whether profiling is currently active (profiled method is running)
-        self.call_count = 0  # Number of times operation has been called
+        self._call_count = 0  # Number of times operation has been called
         self._cumulative_time = 0  # Cumulative execution time of operation
+        self._wrapped_execution_stats = defaultdict(lambda: [0, 0, 0, 0])
+        self._wrapped_execution_cumtime = 0
+        self.wrapped_operations = []
 
     def error(self, exc_type, message):
         """
@@ -186,7 +189,7 @@ class BaseOperation(object):
                 start_time = perf_counter()
                 self.profiling_active = True
                 result = self.action(*args, **kwargs)
-                self.call_count += 1
+                self._call_count += 1
                 self.profiling_active = False
                 self._cumulative_time += perf_counter() - start_time
                 return result
@@ -213,12 +216,62 @@ class BaseOperation(object):
         """
         raise NotImplementedError()
 
+    def wrap_operation(self, operation, **kwargs):
+        """
+        Converts operation and adds to list of wrapped operations
+        :param operation:
+        :param kwargs:
+        :return:
+        """
+        operation = convert_to_operation(operation, **kwargs)
+        if operation:
+            self.wrapped_operations.append(operation)
+        return operation
+
+    def run_wrapped_operation(self, operation, *args, **kwargs):
+        """
+        Run a wrapped operation and record execution time
+        :param Operation operation:
+        :param args:
+        :param kwargs:
+        :return:
+        """
+        if self.profiling_enabled:
+            pre_cum_time = operation.get_cumulative_time()
+            pre_tot_time = operation.get_execute_time()
+            result = operation(*args, **kwargs)
+            delta_cum_time = operation.get_cumulative_time() - pre_cum_time
+            delta_tot_time = operation.get_execute_time() - pre_tot_time
+
+            self._wrapped_execution_cumtime += delta_cum_time
+
+            wrapped_op_stats = self._wrapped_execution_stats[operation.pstat_id]
+            wrapped_op_stats[0] += 1
+            wrapped_op_stats[1] += 1
+            wrapped_op_stats[2] += delta_tot_time
+            wrapped_op_stats[3] += delta_cum_time
+            return result
+        else:
+            return operation(*args, **kwargs)
+
+    def get_wrapped_operation_stats(self, wrapped_operation):
+        """
+        Get execution stats for wrapped operation for this parent operation
+        :param BaseOperation wrapped_operation:
+        :return:
+        """
+        return self._wrapped_execution_stats[wrapped_operation.pstat_id]
+
     def enable_profiling(self):
         self.clear_profile_stats()
         self.profiling_enabled = True
+        for operation in self.wrapped_operations:
+            operation.enable_profiling()
 
     def disable_profiling(self):
         self.profiling_enabled = False
+        for operation in self.wrapped_operations:
+            operation.disable_profiling()
 
     def profile_snakeviz(self, input_val):
         """
@@ -249,38 +302,48 @@ class BaseOperation(object):
         self.add_profile_data(profile_data)
         return profile_data
 
-    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None, transparent=None):
+    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None):
         """
 
         :param dict profile_data: Current profile data dictionary
-        :param CompoundOperation actual_caller: parent calling operation
-        :param CompoundOperation proxy_caller: Proxy calling operation, can be different to actual_caller if there are
+        :param Operation actual_caller: parent calling operation
+        :param Operation proxy_caller: Proxy calling operation, can be different to actual_caller if there are
         'transparent' operations in between
-        :param bool transparent: Used to force transparency irrespective of class attribute
+        :return:
+        """
+        self.add_self_profile_data(profile_data, actual_caller, proxy_caller)
+        # Add profile data for wrapped operations
+        for operation in self.wrapped_operations:
+            operation.add_profile_data(profile_data,
+                                       actual_caller=self,
+                                       proxy_caller=self)
+
+    def add_self_profile_data(self, profile_data, actual_caller, proxy_caller):
+        """
+        :param dict profile_data: Current profile data dictionary
+        :param Operation actual_caller: parent calling operation
+        :param Operation proxy_caller: Proxy calling operation, can be different to actual_caller if there are
+        'transparent' operations in between
         :return:
         """
         # Dont add to profile stats if not called
-        if not self.call_count:
+        if not self._call_count:
             return
 
         node_id = self.pstat_id
         node_stats = self.get_execution_stats()
+
+        if node_id not in profile_data:
+            # Create new entry with no caller detail
+            profile_data[node_id] = node_stats + [{}]
 
         if actual_caller:
             # Calling operation must be a CompoundOperation
             stats_for_caller = actual_caller.get_wrapped_operation_stats(self)
 
             if stats_for_caller[0]:
-                if node_id in profile_data:
-                    # Add to existing caller details
-                    profile_data[node_id][4][proxy_caller.pstat_id] = stats_for_caller
-                else:
-                    # Create new entry with caller detail
-                    profile_data[node_id] = node_stats + [{proxy_caller.pstat_id: stats_for_caller}]
-
-        if node_id not in profile_data:
-            # Create new entry with no caller detail
-            profile_data[node_id] = node_stats + [{}]
+                # Add to existing caller details
+                profile_data[node_id][4][proxy_caller.pstat_id] = stats_for_caller
 
     def get_execution_stats(self):
         """
@@ -295,7 +358,7 @@ class BaseOperation(object):
 
         :return:
         """
-        return [self.call_count, self.call_count, self.get_execute_time(), self.get_cumulative_time()]
+        return [self._call_count, self._call_count, self.get_execute_time(), self.get_cumulative_time()]
 
     def get_cumulative_time(self):
         """
@@ -309,7 +372,7 @@ class BaseOperation(object):
         Get of just this operation (not including any wrapped sub-operations)
         :return:
         """
-        return self.get_cumulative_time()
+        return self.get_cumulative_time() - self._wrapped_execution_cumtime
 
     @property
     def pstat_id(self):
@@ -323,8 +386,10 @@ class BaseOperation(object):
 
     def clear_profile_stats(self):
         self.profiling_active = False
-        self._cumulative_time = 0
-        self.call_count = 0
+        self._cumulative_time = self._call_count = self._wrapped_execution_cumtime = 0
+        self._wrapped_execution_stats = defaultdict(lambda: [0, 0, 0, 0])
+        for operation in self.wrapped_operations:
+            operation.clear_profile_stats()
 
     def show_graph(self):
         from pydot import Dot
@@ -454,13 +519,12 @@ class OperatorWrapperMixin(BaseOperation):
         for operation in self.wrapped_operations:
             operation.disable_profiling()
 
-    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None, transparent=None):
+    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None):
         """
 
         :param dict profile_data:
-        :param CompoundOperation actual_caller:
-        :param CompoundOperation proxy_caller:
-        :param bool transparent:
+        :param Operation actual_caller:
+        :param Operation proxy_caller:
         :return:
         """
         super().add_profile_data(profile_data, actual_caller=actual_caller, proxy_caller=proxy_caller)
@@ -486,15 +550,7 @@ class OperatorWrapperMixin(BaseOperation):
             operation.clear_profile_stats()
 
 
-class CompoundOperation(OperatorWrapperMixin, Operation):
-    """
-    Base class for operations which wrap or contain other operations.
-    Used to propagate method calls such as profiling down to encapsulated operations
-    """
-    pass
-
-
-class OperationsWithOperator(CompoundOperation):
+class OperationsWithOperator(Operation):
     """
     Class used to define an operator (e.g. AND, OR, ADD, MINUS, MULTIPLY),
     and the operands to operate on (generally operations/activities)
@@ -554,7 +610,7 @@ class OperationsWithOperator(CompoundOperation):
             return str(op)
 
 
-class SingleOperandOperator(CompoundOperation):
+class SingleOperandOperator(Operation):
     """
     Base class for operators which operate on single operand (INVERT, NEG, SLICE)
     Inherits type translations from single contained operation
@@ -626,7 +682,7 @@ class SlicedOperation(SingleOperandOperator):
         return '({}){}'.format(self.operation, slice_str)
 
 
-class ChainedOperations(CompoundOperation):
+class ChainedOperations(Operation):
     """
     Holds operators to be chained together
     Also contains validation logic for checking compatability of chained operations
@@ -654,20 +710,19 @@ class ChainedOperations(CompoundOperation):
         graph.add_edge(Edge(end_node1, start_node2))
         return start_node1, end_node2
 
-    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None, transparent=None):
+    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None):
         """
         Special case where operation chain acts transparently for profile data
         :param dict profile_data:
-        :param CompoundOperation actual_caller:
-        :param CompoundOperation proxy_caller:
-        :param bool transparent:
+        :param Operation actual_caller:
+        :param Operation proxy_caller:
         :return:
         """
         transparent = isinstance(actual_caller, ChainedOperations)
 
         # Add profile data for self
         if not transparent:
-            super().add_profile_data(profile_data, actual_caller=actual_caller, proxy_caller=proxy_caller)
+            self.add_self_profile_data(profile_data, actual_caller, proxy_caller)
         # Add profile data for wrapped operations
         for operation in self.wrapped_operations:
             operation.add_profile_data(profile_data,

@@ -1,5 +1,5 @@
-from etl_framework.operations import Operation, CompoundOperation, convert_to_operation
-from etl_framework.utils import validate_callable, randomstring
+from etl_framework.operations import Operation
+from etl_framework.utils import randomstring
 
 
 class DataframeOperation(Operation):
@@ -33,7 +33,7 @@ class ColumnOperation(Operation):
         raise NotImplementedError()
 
 
-class ConditionallyAppliedOperation(CompoundOperation):
+class ConditionallyAppliedOperation(Operation):
     """
     Base class for transform constructors which take an operation and apply it to a masked subset of the input
     dataframe using a provided conditional operation

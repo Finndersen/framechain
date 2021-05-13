@@ -1,8 +1,8 @@
-from etl_framework.operations import Operation, CompoundOperation
+from etl_framework.operations import Operation
 from etl_framework.utils import randomstring
 
 
-class SubGraph(CompoundOperation):
+class SubGraph(Operation):
     """
     Operation which creates a labelled subgraph around the wrapped operations
     Does not actually perform any action during pipeline execution

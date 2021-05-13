@@ -3,13 +3,13 @@ Primary Pandas operations which take Dataframe and return Dataframe
 """
 import logging
 
-from etl_framework.operations import CompoundOperation
+from etl_framework.operations import Operation
 from .base import DataframeOperation
 
 log = logging.getLogger(__name__)
 
 
-class DeleteRows(CompoundOperation, DataframeOperation):
+class DeleteRows(DataframeOperation):
     """
     Operation used to filter DF on provided condition
     """
