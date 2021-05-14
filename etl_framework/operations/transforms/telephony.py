@@ -10,7 +10,7 @@ class TBCDBytesToString(Operation):
     def action(self, value):
         # Nibble swap each octet and convert to hex string
         hex_str = bytes((((x & 0x0F) << 4) + (x >> 4)) for x in value).hex()
-        # Strip Trailing 'f' (slightly faster than rstrip('f'))
+        # Strip Trailing 'f' blank character (slightly faster than rstrip('f'))
         if hex_str[-1] == 'f':
             hex_str = hex_str[:-1]
         return hex_str
@@ -61,6 +61,9 @@ class ConvertCellID(Operation):
         self.ecgi = ecgi
 
     def action(self, str_value):
+        # Handle case of error single byte value
+        if len(str_value) <= 2:
+            return None
         mcc = str_value[1] + str_value[0] + str_value[3]
         mnc = (str_value[5] + str_value[4] + str_value[2]).rstrip('f')
         return mcc + mnc + str_value[7 if self.ecgi else 6:]
