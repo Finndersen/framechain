@@ -13,7 +13,7 @@ class StringColumnToDatetime(ColumnOperation):
     """
     Convert a column of string values to datetime
     Runs as vector operation so should be faster than all other scalar methods
-    Format does not need to be supplied if string is ISO format
+    Will attempt to infer format if not provided
     If timestamps have different timezones, output will be object array and ConvertColumnTimezone
     with different_timezones=True can be used to convert all to desired timezone
     """
@@ -28,7 +28,8 @@ class StringColumnToDatetime(ColumnOperation):
 
     def action(self, column):
         # Get Timestamp series from strings
-        dt_series = pd.to_datetime(column, format=self.format, infer_datetime_format=True)
+        dt_series = pd.to_datetime(column, format=self.format,
+                                   infer_datetime_format=not self.format)
 
         return dt_series
 
