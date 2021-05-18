@@ -139,9 +139,11 @@ class BCDTimestampField(ASN1BERField):
     """
     From BCD timestamp in format YYMMDDhhmmssShhmm to timezone-aware pd.datetime64
     Chain BCDTimestampToString and StringToDatetime converters
+    If timestamp is invalid format, Null value will be returned (instead of raising error)
     """
     value_converter = BCDTimestampToString()
-    column_converter = StringColumnToDatetime(format='%y%m%d%H%M%S%z')
+    column_converter = StringColumnToDatetime(dt_format='%y%m%d%H%M%S%z',
+                                              raise_errors=False)
 
 
 class TBCDField(ASN1BERField):

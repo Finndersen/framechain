@@ -6,9 +6,7 @@ class DataframeOperation(Operation):
     """
     Abstract base class for a primary pandas ETL operation (highest level)
     A configurable callable which takes DataFrame,  performs some kind of processing, and returns DataFrame
-    Are chainable but do not support other operators
     """
-    calling_translations = {'dataframe': 'dataframe'}
 
     def action(self, dataframe):
         raise NotImplementedError()

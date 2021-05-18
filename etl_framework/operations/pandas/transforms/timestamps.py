@@ -19,17 +19,21 @@ class StringColumnToDatetime(ColumnOperation):
     """
     changes_type = True
 
-    def __init__(self, format=None):
+    def __init__(self, dt_format=None, raise_errors=True):
         """
-        :param str format: Datetime string format as strptime() format code
+        :param str dt_format: Datetime string format as strptime() format code
+        :param bool raise_errors: Whether to raise string parsing errors. Otherwise will return NaN for invalid inputs
         """
         super().__init__()
-        self.format = format
+        self.format = dt_format
+        self.raise_errors = raise_errors
 
     def action(self, column):
         # Get Timestamp series from strings
-        dt_series = pd.to_datetime(column, format=self.format,
-                                   infer_datetime_format=not self.format)
+        dt_series = pd.to_datetime(column,
+                                   format=self.format,
+                                   infer_datetime_format=not self.format,
+                                   errors='raise' if self.raise_errors else 'coerce')
 
         return dt_series
 

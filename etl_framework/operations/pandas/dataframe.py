@@ -2,16 +2,19 @@
 Primary Pandas operations which take Dataframe and return Dataframe
 """
 import logging
+import pandas as pd
 
-from etl_framework.operations import Operation
 from .base import DataframeOperation
 
 log = logging.getLogger(__name__)
 
 
-class DeleteRows(DataframeOperation):
+class DropRows(DataframeOperation):
     """
     Operation used to filter DF on provided condition
+    Implementation notes:
+    When proportion of rows being dropped is minority, df.drop() is faster than df.loc[].copy()
+    When proportion of rows being dropped is majority, df.drop() is slower than df.loc[].copy()
     """
 
     def __init__(self, condition):
@@ -23,11 +26,14 @@ class DeleteRows(DataframeOperation):
 
     def action(self, dataframe):
         # Get masked/filtered DF
-        filtered_df = dataframe.loc[~self.run_wrapped_operation(self.condition, dataframe)]
-        log.debug('Filtered out {} rows ({} remaining)'.format(len(dataframe.index) - len(filtered_df.index),
-                                                               len(filtered_df.index)))
-        # Return copy so that it is not a slice (which may raise SettingWithCopyWarning)
-        return filtered_df.copy()
+        drop_mask = self.run_wrapped_operation(self.condition, dataframe)
+        if not pd.api.types.is_bool_dtype(drop_mask):
+            self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
+
+        filtered_df = dataframe.drop(index=dataframe[drop_mask].index)
+        # Reset index of new DF
+        filtered_df.reset_index(inplace=True, drop=True)
+        return filtered_df
 
     def description(self):
         return 'Delete rows which match condition: {}'.format(self.condition)

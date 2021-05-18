@@ -60,9 +60,6 @@ class OperationOperators(object):
 
     # CHAINING
     def __rshift__(self, other):
-        # if other is None:
-        #     return self
-        # else:
         return ChainedOperations(self, other)
 
     # INVERSION
