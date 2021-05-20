@@ -15,9 +15,24 @@ log = logging.getLogger(__name__)
 
 
 class OperationError(Exception):
-    def __init__(self, operation, exc):
-        message = 'Exception occured during operation: {}\n{}: {}'.format(operation, type(exc).__name__, str(exc))
-        super().__init__(message)
+    def __init__(self, exc):
+        """
+
+        :param exc: Exception to be wrapped
+        """
+        self.wrapped_exception = exc
+        # List of nested operations which define location was raised (raised in first, following are parents)
+        self.location = []
+        super().__init__()
+
+    def add_location(self, operation):
+        self.location.append(operation)
+
+    def __str__(self):
+        return 'Exception occurred during operation:\n {}\n{}: {}'.format('\n'.join(str(operation) for operation
+                                                                                    in reversed(self.location)),
+                                                                          type(self.wrapped_exception).__name__,
+                                                                          str(self.wrapped_exception))
 
 
 def profiled(method):
@@ -194,15 +209,12 @@ class BaseOperation(object):
                 return self.action(*args, **kwargs)
 
         except Exception as exc:
-            exc_result = self.handle_exception(exc, *args, **kwargs)
             # Re-raise exception with operation details if not handled
-            if exc_result is None:
-                if isinstance(exc, OperationError):
-                    raise
-                else:
-                    raise OperationError(self, exc).with_traceback(sys.exc_info()[2])
-            else:
-                return exc_result
+            if not isinstance(exc, OperationError):
+                exc = OperationError(exc).with_traceback(sys.exc_info()[2])
+
+            exc.add_location(self)
+            raise exc
 
     def action(self, *args, **kwargs):
         """
@@ -408,17 +420,6 @@ class BaseOperation(object):
         node = Node(name=randomstring(10), label=self.short_description())
         graph.add_node(node)
         return node, node
-
-    def handle_exception(self, exc, *args, **kawrgs):
-        """
-        Handle exception raised during action().
-        Allows 'ask forgiveness not permission' style implementation in action() for greater performance
-        Can be used to provide more meaningful context-specific error messages, or logging
-        Any non-None return value will be used as operation return value
-        :param exc:
-        :return:
-        """
-        pass
 
     def short_description(self):
         """
