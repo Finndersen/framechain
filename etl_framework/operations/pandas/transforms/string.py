@@ -1,6 +1,34 @@
 from etl_framework.operations.pandas.base import ColumnOperation
 from etl_framework.operations.transforms.string import RegexExtract
-import re
+
+
+class StringFunction(ColumnOperation):
+    """
+    Call arbitrary Series string function
+    """
+    def __init__(self, func_name, *args, **kwargs):
+        """
+
+        :param str func_name: Name of string function to call
+        :param args: Positional arguments to provide
+        :param kwargs: Keyword arguments to provide
+        """
+        super().__init__()
+        self.func_name = func_name
+        self.args = args
+        self.kwargs = kwargs
+
+    def action(self, string_column):
+        func = getattr(string_column.str, self.func_name)
+        return func(*self.args, **self.kwargs)
+
+    def description(self):
+        desc = 'String Series function: "{}"'.format(self.func_name)
+        if self.args:
+            desc += ' with args: {}'.format(self.args)
+        if self.kwargs:
+            desc += ' and kwargs: {}'.format(self.kwargs)
+        return desc
 
 
 class StringColumnSplit(ColumnOperation):
