@@ -1,5 +1,6 @@
 import pandas as pd
 import pytz
+from pandas.api.types import is_datetime64_any_dtype
 
 from etl_framework.operations.base import Operation
 from etl_framework.operations.pandas.base import ColumnOperation
@@ -34,7 +35,10 @@ class StringColumnToDatetime(ColumnOperation):
                                    format=self.format,
                                    infer_datetime_format=not self.format,
                                    errors='raise' if self.raise_errors else 'coerce')
-
+        # to_datetime() will not convert to datetime64 type if timestamp format string contains timezone information
+        # (%z) and no valid values are matched. So attempt conversion again just to get appropriate type
+        if not is_datetime64_any_dtype(dt_series):
+            dt_series = pd.to_datetime(dt_series)
         return dt_series
 
 
@@ -263,5 +267,6 @@ class TimedeltaToSeconds(ColumnOperation):
     """
     Convert a Timedelta column to a total number of seconds float column
     """
+
     def action(self, timedelta_column):
         return timedelta_column.dt.total_seconds()

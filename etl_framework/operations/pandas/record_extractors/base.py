@@ -49,12 +49,11 @@ class BaseDataFrameGenerator(Operation):
                 if field.name not in dataframe.columns and field.add_if_missing:
                     dataframe[field.name] = np.nan
 
-        if not dataframe.empty:
-            # Perform field vector conversions
-            with LogDuration(log, 'Performing vector field conversions...'):
-                for field in self.fields:
-                    if field.name in dataframe.columns:
-                        dataframe[field.name] = field.convert_column(dataframe[field.name])
+        # Perform field vector conversions
+        with LogDuration(log, 'Performing vector field conversions...'):
+            for field in self.fields:
+                if field.name in dataframe.columns:
+                    dataframe[field.name] = field.convert_column(dataframe[field.name])
 
         # Order columns as input field order (plus any additional fields added)
         if self.fields:

@@ -77,8 +77,8 @@ class Not(Operation):
 
         :param operation: Operation to wrap and return NOT result of.
         """
-        self.operation = self.wrap_operation(operation)
         super().__init__()
+        self.operation = self.wrap_operation(operation)
 
     def action(self, *args, **kwargs):
         return not self.run_wrapped_operation(self.operation, *args, **kwargs)

@@ -45,6 +45,15 @@ class IsNull(ColumnOperation):
         return ' is Null'
 
 
+class IsEmpty(Operation):
+    """
+    Check whether a DataFrame or Series is empty
+    """
+
+    def action(self, df_or_series):
+        return df_or_series.empty
+
+
 class StringContains(ColumnOperation):
     """
     Test whether string column values contain pattern or regex
