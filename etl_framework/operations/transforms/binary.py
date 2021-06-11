@@ -54,16 +54,19 @@ class BytesToHexString(Operation):
     """
     Convert bytes to BCD hex string
     Effectively gets binary representation of integer and breaks it into 4-bit blocks
-    e.g. b'\x05\x05\x01`\x01\x11I@' -> '505016001114940'
+    e.g. b'\x5d\xb1\x80' -> '5DB180'
     """
 
-    def __init__(self, hex_length=None):
+    def __init__(self, hex_length=None, uppercase=True):
         """
 
-        :param int hex_length: Expected length of output hex string. If specified and output is longer, leading zeros will be removed
+        :param int hex_length: Expected length of output hex string. If specified and output is longer,
+        leading zeros will be removed
+        :param bool uppercase: Whether to convert alphabetic hex characters to uppercase
         """
         super().__init__()
         self.hex_length = hex_length
+        self.uppercase = uppercase
 
     def action(self, value):
         # Trim off '0x' from start of string
@@ -71,6 +74,9 @@ class BytesToHexString(Operation):
         # 0-pad hex string if required
         if self.hex_length:
             hex_str = hex_str[-self.hex_length:]
+
+        if self.uppercase:
+            hex_str = hex_str.upper()
 
         return hex_str
 

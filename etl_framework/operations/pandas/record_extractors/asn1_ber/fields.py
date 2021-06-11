@@ -4,6 +4,7 @@ from etl_framework.operations.transforms import BytesToString, BytesToBoolean, B
     BytesToHexString, TBCDBytesToString, BinaryToIPv4Address, BinaryToIPv6Address, BCDTimestampToString
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
 from etl_framework.exceptions import ETLFieldError
+from etl_framework.operations.transforms.telephony import ConvertAddressString
 
 
 class ASN1BERField(InputField):
@@ -79,6 +80,7 @@ class EnumeratedField(IntegerField):
     Field which translates an enumerated integer value to corresponding string value
     """
     column_type = object
+
     def __init__(self, name, asn_id, mapping, **kwargs):
         """
 
@@ -128,11 +130,26 @@ class TimeField(ASN1BERField):
         super().__init__(*args, value_converter=converter, **kwargs)
 
 
-class BCDField(ASN1BERField):
+class AddressStringField(ASN1BERField):
     """
-    Read binary data as Binary-Coded-Decimal
+    For decoding address strings (usually phone numbers) in format:
+    Octet 0: Nature of Address(TON) |   Numbering Plan (NPI)
+    Octet 1: Address Digit 2        |   Address digit 1
+    ...
+    Octet n: Address digit 2n       | Address digit 2n-1
+
+    Address digits need to be nibble-swapped
     """
-    value_converter = BytesToHexString()
+    value_converter = ConvertAddressString()
+    column_type = object
+
+
+class OctetStringField(ASN1BERField):
+    """
+    Convert binary data to hex string representation.
+    e.g. b'\x5d\xb1\x80' -> '5DB180'
+    """
+    value_converter = BytesToHexString(uppercase=True)
 
 
 class BCDTimestampField(ASN1BERField):

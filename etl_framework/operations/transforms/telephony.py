@@ -5,6 +5,7 @@ class TBCDBytesToString(Operation):
     """
     Convert binary number in Telephony Binary Coded Decimal nibble-swapped format to text string
     This is a format often used to represent MSISDN, IMSI, IMEI numbers in ASN1 encoded data
+    e.g. b'\x53\x46\x00\x80\x50\x57\x51\xf0' -> '356400080575150'
     """
 
     def action(self, value):
@@ -14,6 +15,19 @@ class TBCDBytesToString(Operation):
         if hex_str[-1] == 'f':
             hex_str = hex_str[:-1]
         return hex_str
+
+
+class ConvertAddressString(Operation):
+    """
+    Preserve first byte (TON and NPI), nibble swap remaining (address)
+    :return:
+    """
+    def __init__(self):
+        super().__init__()
+        self.tbcd_converter = self.wrap_operation(TBCDBytesToString())
+
+    def action(self, binary_value):
+        return binary_value[0:1].hex() + self.run_wrapped_operation(self.tbcd_converter, binary_value[1:])
 
 
 class BinaryToIPv4Address(Operation):
