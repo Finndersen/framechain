@@ -1,7 +1,7 @@
 from etl_framework.utils import LogDuration
 from etl_framework.operations import BaseOperation, Operation, profiled
 from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
-from etl_framework.operations.pandas.transforms import ToInteger, SetColumnTimezone, StringColumnToDatetime
+from etl_framework.operations.pandas.transforms import ToInteger, SetColumnTimezone, ColumnToDatetime
 import logging
 import numpy as np
 
@@ -203,7 +203,7 @@ class TimestampFieldMixin(object):
         :param str time_format: Timestamp format string. Can be left as None to attempt to infer standard formats
         :param str timezone: Timezone to apply to entire timestamp column (if timestamp does not contain timezone info)
         """
-        column_converter = StringColumnToDatetime(time_format)
+        column_converter = ColumnToDatetime(time_format)
         if timezone:
             column_converter = column_converter >> SetColumnTimezone(timezone)
 

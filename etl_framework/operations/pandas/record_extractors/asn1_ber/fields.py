@@ -1,4 +1,4 @@
-from etl_framework.operations.pandas import StringColumnToDatetime, ColumnMap, BytesColumnToString, AsType
+from etl_framework.operations.pandas import ColumnToDatetime, ColumnMap, BytesColumnToString, AsType
 from etl_framework.operations import profiled
 from etl_framework.operations.transforms import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, BytesToDateString, BytesToTime, BytesToTimeString, \
     BytesToHexString, TBCDBytesToString, BinaryToIPv4Address, BinaryToIPv6Address, BCDTimestampToString
@@ -159,8 +159,8 @@ class BCDTimestampField(ASN1BERField):
     If timestamp is invalid format, Null value will be returned (instead of raising error)
     """
     value_converter = BCDTimestampToString()
-    column_converter = StringColumnToDatetime(dt_format='%y%m%d%H%M%S%z',
-                                              raise_errors=False)
+    column_converter = ColumnToDatetime(dt_format='%y%m%d%H%M%S%z',
+                                        raise_errors=False)
 
 
 class TBCDField(ASN1BERField):
