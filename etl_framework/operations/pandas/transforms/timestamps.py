@@ -20,14 +20,14 @@ class ColumnToDatetime(ColumnOperation):
     """
     changes_type = True
 
-    def __init__(self, dt_format=None, raise_errors=True, utc=None):
+    def __init__(self, format=None, raise_errors=True, utc=None):
         """
-        :param str dt_format: Datetime string format as strptime() format code
+        :param str format: Datetime string format as strptime() format code
         :param bool raise_errors: Whether to raise string parsing errors. Otherwise will return NaN for invalid inputs
         :param bool utc: Whether to convert toUTC timezone-aware timestamp
         """
         super().__init__()
-        self.format = dt_format
+        self.format = format
         self.raise_errors = raise_errors
         self.utc = utc
 

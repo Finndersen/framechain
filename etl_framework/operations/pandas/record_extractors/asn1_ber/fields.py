@@ -159,7 +159,7 @@ class BCDTimestampField(ASN1BERField):
     If timestamp is invalid format, Null value will be returned (instead of raising error)
     """
     value_converter = BCDTimestampToString()
-    column_converter = ColumnToDatetime(dt_format='%y%m%d%H%M%S%z',
+    column_converter = ColumnToDatetime(format='%y%m%d%H%M%S%z',
                                         raise_errors=False)
 
 

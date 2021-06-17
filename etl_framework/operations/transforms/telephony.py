@@ -10,9 +10,9 @@ class TBCDBytesToString(Operation):
 
     def action(self, value):
         # Nibble swap each octet and convert to hex string
-        hex_str = bytes((((x & 0x0F) << 4) + (x >> 4)) for x in value).hex()
+        hex_str = bytes((((x & 0x0F) << 4) + (x >> 4)) for x in value).hex().upper()
         # Strip Trailing 'f' blank character (slightly faster than rstrip('f'))
-        if hex_str[-1] == 'f':
+        if hex_str[-1] == 'F':
             hex_str = hex_str[:-1]
         return hex_str
 
@@ -79,7 +79,7 @@ class ConvertCellID(Operation):
         if len(str_value) <= 2:
             return None
         mcc = str_value[1] + str_value[0] + str_value[3]
-        mnc = (str_value[5] + str_value[4] + str_value[2]).rstrip('f')
+        mnc = (str_value[5] + str_value[4] + str_value[2]).rstrip('F')
         return mcc + mnc + str_value[7 if self.ecgi else 6:]
 
 
@@ -90,3 +90,4 @@ class IPAddressFromHexString(Operation):
     """
     def action(self, hex_str):
         return '.'.join(str(int(hex_str[2*i:2*i+2], 16)) for i in range(4))
+

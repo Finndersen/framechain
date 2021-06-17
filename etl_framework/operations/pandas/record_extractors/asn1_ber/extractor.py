@@ -40,9 +40,9 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
                 file_data = file_data.read()
             else:
                 raise ValueError('Expected bytes data or file reader object, not {}'.format(type(file_data)))
-
-        return pd.DataFrame([self.record_processor(record) if self.record_processor else record
+        df = pd.DataFrame([self.record_processor(record) if self.record_processor else record
                              for record in self.get_records(file_data)])
+        return df
 
     def get_records(self, file_data):
         """
