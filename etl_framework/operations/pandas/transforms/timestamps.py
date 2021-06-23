@@ -45,13 +45,12 @@ class ColumnToDatetime(ColumnOperation):
         return dt_series
 
 
-class ToTimedelta(ColumnOperation):
+class NumberToTimedelta(ColumnOperation):
     """
     Convert a column of integers to Timedelta values
     """
     VALID_UNITS = {'D', 'h', 'm', 's', 'ms', 'us', 'ns'}
 
-    # {'Y', 'M', 'W', 'D', 'days', 'day', 'hours', 'hour', 'hr', 'h', 'm', 'minute',  'minutes', 'seconds', 'second', 'ms', 'milliseconds','microseconds',  'ns', 'nanoseconds', 'nano', 'nanos', 'nanosecond'}
     def __init__(self, units='s'):
         """
 

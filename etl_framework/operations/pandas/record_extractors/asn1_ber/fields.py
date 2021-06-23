@@ -1,5 +1,5 @@
-from etl_framework.operations.pandas import ColumnToDatetime, ColumnMap, BytesColumnToString, AsType
-from etl_framework.operations import profiled
+from etl_framework.operations.pandas import ColumnToDatetime, ColumnMap, BytesColumnToString, AsType, ToInteger
+from etl_framework.operations import profiled, BinaryDurationToInt
 from etl_framework.operations.transforms import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, BytesToDateString, BytesToTime, BytesToTimeString, \
     BytesToHexString, TBCDBytesToString, BinaryToIPv4Address, BinaryToIPv6Address, BCDTimestampToString
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
@@ -128,6 +128,14 @@ class TimeField(ASN1BERField):
         else:
             converter = BytesToTime()
         super().__init__(*args, value_converter=converter, **kwargs)
+
+
+class DurationField(ASN1BERField):
+    """
+    From binary time in HHMMSS to total duration in seconds
+    """
+    value_converter = BinaryDurationToInt()
+    column_converter = ToInteger()
 
 
 class AddressStringField(ASN1BERField):
