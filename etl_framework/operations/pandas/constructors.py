@@ -7,7 +7,7 @@ from pandas.core.dtypes.common import is_datetime64_any_dtype
 
 from etl_framework.exceptions import ChangedDataTypError, ETLConfigurationError
 from etl_framework.operations import Operation
-from etl_framework.operations.pandas import Field, IsNull, ConditionallyAppliedOperation
+from etl_framework.operations.pandas import Field, IsNull, ConditionallyAppliedOperation, ColumnOfValue
 
 
 class SetColumn(ConditionallyAppliedOperation):

@@ -45,9 +45,13 @@ class ColumnToDatetime(ColumnOperation):
         return dt_series
 
 
-class NumberToTimedelta(ColumnOperation):
+class ToTimedelta(ColumnOperation):
     """
-    Convert a column of integers to Timedelta values
+    Convert a column to Timedelta values
+    Supports string values or numbers:
+    to_timedelta('1 days 06:05:01.00003')
+    pd.to_timedelta('15.5us')
+    pd.to_timedelta(np.arange(5), unit='s')
     """
     VALID_UNITS = {'D', 'h', 'm', 's', 'ms', 'us', 'ns'}
 
@@ -61,8 +65,8 @@ class NumberToTimedelta(ColumnOperation):
             self.error(ValueError, 'Invalid timedelta units: "{}". Choose from: {}'.format(units, self.VALID_UNITS))
         self.units = units
 
-    def action(self, int_column):
-        return pd.to_timedelta(int_column, unit=self.units)
+    def action(self, column):
+        return pd.to_timedelta(column, unit=self.units)
 
     def description(self):
         return "Integer to timedelta with units: {}".format(self.units)
