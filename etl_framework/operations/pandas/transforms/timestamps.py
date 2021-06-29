@@ -44,6 +44,9 @@ class ColumnToDatetime(ColumnOperation):
             dt_series = pd.to_datetime(dt_series)
         return dt_series
 
+    def description(self):
+        return '{} with format: {}'.format(type(self).__name__, self.format)
+
 
 class ToTimedelta(ColumnOperation):
     """

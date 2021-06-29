@@ -68,25 +68,6 @@ class MapArguments(Operation):
                                                 ', '.join(['{}=({})'.format(key,val) for key,val in self.arg_mapping.items()]))
 
 
-class Not(Operation):
-    """
-    Performs Not operator.
-    """
-    def __init__(self, operation):
-        """
-
-        :param operation: Operation to wrap and return NOT result of.
-        """
-        super().__init__()
-        self.operation = self.wrap_operation(operation)
-
-    def action(self, *args, **kwargs):
-        return not self.run_wrapped_operation(self.operation, *args, **kwargs)
-
-    def description(self):
-        return 'NOT ({})'.format(self.operation)
-
-
 class DynamicallyConfiguredOperation(Operation):
     """
     Wrapper that allows an operation to be initialised with dynamic attributes (e.g. from Context dictionary)

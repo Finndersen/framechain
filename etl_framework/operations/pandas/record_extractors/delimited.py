@@ -13,7 +13,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
     """
     Extract records from data file with fields seperated by delimiter character
     Wrapper around pandas.read_csv
-    Input is file reader object in text mode
+    Input is file text or bytes content or file reader object in text mode
     If file contains headers, field header_name attribute is used to match field
     Otherwise, Fields must provide
     """
@@ -91,6 +91,7 @@ class CSVField(InputField):
     """
     Object representing field in delimited (e.g. CSV) file
     """
+    dtype = None  # Data type to convert to during original Dataframe construction (before column converter)
 
     def __init__(self, name, column_id=None, dtype=None, **kwargs):
         """
@@ -101,7 +102,7 @@ class CSVField(InputField):
         :param str dtype: Data type to convert to (e.g. 'float64', 'int64', 'int32')
         """
         self.column_id = name if column_id is None else column_id
-        self.dtype = dtype
+        self.dtype = dtype or self.dtype
         super().__init__(name, **kwargs)
 
 
@@ -109,16 +110,7 @@ class StringField(CSVField):
     """
     Field which converts values to String dtype
     """
-
-    def __init__(self, name, **kwargs):
-        """
-
-        :param name:
-        :param kwargs:
-        """
-        super().__init__(name,
-                         dtype='str',
-                         **kwargs)
+    dtype = 'str'
 
 
 class IntegerField(CSVField):
@@ -142,4 +134,4 @@ class TimestampField(TimestampFieldMixin, CSVField):
     """
     Field which converts values to Timestamp
     """
-    pass
+    dtype = 'str'

@@ -391,7 +391,7 @@ class BaseOperation(object):
         :return:
         """
         desc = self.short_description()
-        return ('', id(self), desc)
+        return ('', id(type(self)), desc)
 
     def clear_profile_stats(self):
         self.profiling_active = False

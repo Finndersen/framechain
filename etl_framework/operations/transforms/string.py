@@ -1,5 +1,5 @@
 from etl_framework.operations import Operation
-import re
+import re, io
 
 
 class RegexExtract(Operation):
@@ -35,3 +35,26 @@ class RegexExtract(Operation):
     def description(self):
         return '{} with pattern: "{}"'.format(type(self).__name__,
                                               self.compiled_pattern.pattern)
+
+
+class FilterFileLines(Operation):
+    """
+    Operation which removes lines from a text file content that do not match given condition
+    Input: File reader in text mode
+    Output: StringIO object which acts as text file reader, containing only lines that match regex pattern
+    """
+    def __init__(self, condition):
+        """
+
+        :param condition: Callable which takes line string and returns True if it should be kept
+        """
+        super().__init__()
+        self.condition = self.wrap_operation(condition)
+
+    def action(self, file_reader):
+        output = io.StringIO()
+        for line in file_reader:
+            if self.run_wrapped_operation(self.condition, line):
+                output.write(line)
+        output.seek(0)
+        return output

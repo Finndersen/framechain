@@ -1,9 +1,11 @@
-from etl_framework.utils import LogDuration
-from etl_framework.operations import BaseOperation, Operation, profiled
-from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
-from etl_framework.operations.pandas.transforms import ToInteger, SetColumnTimezone, ColumnToDatetime
 import logging
+
 import numpy as np
+
+from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
+from etl_framework.operations import BaseOperation, Operation, profiled
+from etl_framework.operations.pandas.transforms import ToInteger, SetColumnTimezone, ColumnToDatetime
+from etl_framework.utils import LogDuration
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +44,8 @@ class BaseDataFrameGenerator(Operation):
 
         :param input_data: ETL input data. Type depends on requirements of specific Record Extractor
         """
-        with LogDuration(log, 'Extracting records from input...'):  # TODO: Remove logging and add dedicated operation for logging
+        with LogDuration(log,
+                         'Extracting records from input...'):  # TODO: Remove logging and add dedicated operation for logging
             dataframe = self.create_dataframe(input_data)
             #  Add any missing fields as Null column
             for field in self.fields:
@@ -103,7 +106,7 @@ class InputField(BaseOperation):
     value_converter = None
     ignore_condition = None
     column_type = None
-    EMPTY_VALUES = {''}   # Values which will be converted to None
+    EMPTY_VALUES = {''}  # Values which will be converted to None
 
     def __init__(self, name, mandatory=False, column_converter=None, value_converter=None, ignore_condition=None,
                  column_type=None, add_if_missing=True):
@@ -197,6 +200,7 @@ class TimestampFieldMixin(object):
     """
     Mixin for Timestamp fields with optional timezone
     """
+
     def __init__(self, *args, time_format=None, timezone=None, **kwargs):
         """
 
@@ -209,5 +213,4 @@ class TimestampFieldMixin(object):
 
         super().__init__(*args,
                          column_converter=column_converter,
-                         # value_converter=StringToDatetime(time_format),
                          **kwargs)
