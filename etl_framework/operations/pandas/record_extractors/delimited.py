@@ -2,11 +2,10 @@ import csv
 
 import pandas as pd
 
-from etl_framework.exceptions import MandatoryFieldError
 from etl_framework.operations.io import TextReader
-from etl_framework.operations.transforms import BytesToString
 from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, \
     TimestampFieldMixin
+from etl_framework.operations.transforms import BytesToString
 
 
 class DelimitedRecordExtractor(BaseDataFrameGenerator):
@@ -21,7 +20,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
     def __init__(self, fields, delimiter=',', quoting=csv.QUOTE_MINIMAL, header=True, **read_csv_kwargs):
         """
         :param tuple/list fields: List/tuple of CSVField(s)
-        :param str delimiter: Delimeter character used for CSV reader
+        :param str delimiter: Delimiter character used for CSV reader
         :param quoting: Quoting setting for CSV reader
         :param bool header: Whether field headers are provided in file
         :param dict read_csv_kwargs: Additional arguments to pass to CSV reader
@@ -61,7 +60,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         dtypes = {field.column_id: field.dtype
                   for field in self.fields if field.dtype}
         # Get mapping of field header names or column IDs to converter definitions
-        converters = {field.column_id: field.value_converter
+        converters = {field.column_id: field.convert_value
                       for field in self.fields if field.value_converter}
 
         dataframe = pd.read_csv(file_data,
@@ -78,11 +77,6 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
                    for field in self.fields
                    if field.column_id != field.name}
         dataframe.rename(columns=renames, inplace=True)
-
-        # Perform mandatory field validation
-        for field in self.fields:
-            if field.mandatory and dataframe[field.name].isnull().any():
-                self.error(MandatoryFieldError, 'Field: {} contains empty values'.format(field))
 
         return dataframe
 
@@ -110,7 +104,7 @@ class StringField(CSVField):
     """
     Field which converts values to String dtype
     """
-    dtype = 'str'
+    dtype = 'object'
 
 
 class IntegerField(CSVField):
@@ -134,4 +128,4 @@ class TimestampField(TimestampFieldMixin, CSVField):
     """
     Field which converts values to Timestamp
     """
-    dtype = 'str'
+    dtype = 'object'

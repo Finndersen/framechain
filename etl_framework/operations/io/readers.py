@@ -10,45 +10,29 @@ class LocalFileReader(Operation):
     Standard file reader for compressed or uncompressed files.
     Takes file path, returns file reader object opened in binary or text mode
     """
-    COMPRESSION_TYPES = {
-        '.gz': 'gzip'
-    }
 
-    calling_translations = {'input': 'file_reader'}
-
-    def __init__(self, compression=None, binary=False, **open_kwargs):
+    def __init__(self, gzipped=None, binary=False, **open_kwargs):
         """
 
-        :param compression: File compression ('gzip', False, or None to auto-detect)
+        :param gzipped: Whether file is gzipped (will determine automatically if None)
         :param bool binary: Whether to read file data as binary
         :param open_kwargs:
         """
         super().__init__()
-        if compression and compression not in self.COMPRESSION_TYPES.values():
-            self.error(ValueError, 'Supported compression types are: {}'.format(self.COMPRESSION_TYPES))
-        self.compression = compression
+        self.gzipped = gzipped
         self.binary = binary
         self.open_kwargs = open_kwargs
 
     def action(self, file_path):
         mode = 'rb' if self.binary else 'rt'
 
-        # Determine compression
-        if self.compression is None:
-            for ext, comp in self.COMPRESSION_TYPES.items():
-                if file_path.endswith(ext):
-                    compression = comp
-                    break
-            else:
-                compression = False
+        # Determine file open function
+        if self.gzipped or (self.gzipped is None and file_path.endswith('.gz')):
+            open_func = gzip.open
         else:
-            compression = self.compression
+            open_func = open
 
-        if compression == 'gzip':
-            file = gzip.open(file_path, mode=mode, **self.open_kwargs)
-        else:
-            file = open(file_path, mode=mode, **self.open_kwargs)
-        return file
+        return open_func(file_path, mode=mode, **self.open_kwargs)
 
 
 class STDINReader(Operation):
