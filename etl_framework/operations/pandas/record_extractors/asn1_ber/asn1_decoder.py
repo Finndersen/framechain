@@ -42,8 +42,8 @@ class ASN1Node(object):
 
 
 class ASN1BERDecoder(object):
-    RECORDTYPE_FIELD_NAME = 'asn1_record_type'
-    RECORDNUMBER_FIELD_NAME = 'asn1_record_number'
+    RECORDTYPE_FIELD_NAME = '_record_type'
+    RECORDNUMBER_FIELD_NAME = '_record_number'
 
     def __init__(self, record_types, fields, header_trailer_lengths):
         """

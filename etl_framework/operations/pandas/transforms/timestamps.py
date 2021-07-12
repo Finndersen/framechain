@@ -254,19 +254,35 @@ class DateTimeProperty(ColumnOperation):
 
 class DatetimeToString(ColumnOperation):
     """
-    Format Timestamp series to String
+    Format Timestamp series to String, and replace missng values with specified string
+
+    In pandas versions before 1.0, dt.strftime() returned 'NaT' string for NaT values,
+    whereas later versions (e.g. 1.2) return np.NaN values.
+
     """
 
-    def __init__(self, format='%Y-%m-%d %H:%M:%S'):
+    def __init__(self, format='%Y-%m-%d %H:%M:%S', null_value=''):
         """
 
         :param str format: Datetime format string
+        :param str null_value: Value to substitute empty values for (None to skip substitution)
         """
         super().__init__()
         self.format = format
+        self.null_value = null_value
 
     def action(self, series):
-        return series.dt.strftime(self.format)
+
+        formatted_series = series.dt.strftime(self.format)
+        # If entire series is NaT, output series will be NaN float-type series
+        # If series is mixture of NaT and value times, output will be object series with strings and NaN values
+        if self.null_value is not None:
+            if int(pd.__version__[0]) < 1:
+                formatted_series = formatted_series.str.replace('NaT', self.null_value)
+            else:
+                formatted_series = formatted_series.fillna(self.null_value)
+
+        return formatted_series
 
     def description(self):
         return 'DatetimeToString format: "{}"'.format(self.format)

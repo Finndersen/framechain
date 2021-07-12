@@ -14,12 +14,14 @@ class AdvancedDelimitedRecordExtractor(BaseDataFrameGenerator):
     Should use standard DelimitedRecordExtractor if this functionality is not required (better performance)
 
     """
+    RECORDTYPE_FIELD_NAME = '_record_type'
+    RECORDNUMBER_FIELD_NAME = '_record_number'
 
     def __init__(self, fields, recordtype_detector, **csv_reader_kwargs):
         """
 
         :param list/tuple fields: Sequence of AdvancedCSVField
-        :param recordtype_detector: Callable which takes raw record (list of values) and returns record type as string
+        :param recordtype_detector: Callable which takes raw record (list of values) and returns record type as string, or None if record should be skipped
         :param csv_reader_kwargs: kwargs to provide to csv.reader()
         """
 
@@ -35,17 +37,23 @@ class AdvancedDelimitedRecordExtractor(BaseDataFrameGenerator):
         """
         output_records = []
         csv_reader = csv.reader(file_reader, **self.csv_reader_kwargs)
-        for raw_row in csv_reader:
+        for record_number, raw_row in enumerate(csv_reader, start=1):
             recordtype = self.run_wrapped_operation(self.recordtype_detector, raw_row)
+
+            # Skip record if no record type
+            if recordtype is None:
+                continue
+
             if not isinstance(recordtype, str):
                 raise TypeError('Record Type must be a string, not: "{}"'.format(recordtype))
 
-            record = [field.get_field_value(raw_row, recordtype) for field in self.fields]
-            record.append(recordtype)
+            record = [field.get_field_value(raw_row, recordtype) for field in self.fields] + [recordtype,
+                                                                                              record_number]
             output_records.append(record)
 
         return pd.DataFrame(data=output_records,
-                            columns=[field.name for field in self.fields] + ['csv_record_type'],
+                            columns=[field.name for field in self.fields] + [self.RECORDTYPE_FIELD_NAME,
+                                                                             self.RECORDNUMBER_FIELD_NAME],
                             dtype='object')
 
 

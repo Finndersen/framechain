@@ -106,12 +106,9 @@ class Mask(ConditionallyAppliedOperation):
     def action(self, df_or_column_original):
 
         # Get mask using condition (should be read-only operation)
-        mask = self.run_wrapped_operation(self.condition, df_or_column_original)
+        mask = self.get_mask(df_or_column_original)
 
-        if not pd.api.types.is_bool_dtype(mask):
-            self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
-
-        # Exit early if mask does not match any values (unless input is DF cause transform may add extra columns)
+        # Exit early if mask does not match any values (unless input is DF cause transform may add extra empty columns)
         if isinstance(df_or_column_original, pd.Series) and not mask.any():
             return df_or_column_original
 
@@ -171,27 +168,28 @@ class ColumnOfValue(Operation):
         return 'Column with value: "{}"'.format(self.value)
 
 
-class FillNA(ColumnOperation):
+class FillNA(Operation):
     """
-    Fill NA values of column with specified value
+    Fill NA values of column or DF with specified value
     """
     def __init__(self, value):
         """
 
         :param value: static value or callable which returns scalar value
         """
+        super().__init__()
         self.value = value
 
-    def action(self, column):
+    def action(self, df_or_series):
         """
 
-        :param column: Dataframe or Series
+        :param df_or_series: Dataframe or Series
         :return:
         """
-        return column.fillna(self.value)
+        return df_or_series.fillna(self.value)
 
     def description(self):
-        return 'Fill NA columns with: {}'.format(self.value)
+        return 'Fill NA values with: {}'.format(self.value)
 
 
 class MergeRowValues(Operation):

@@ -15,19 +15,15 @@ class SetColumn(ConditionallyAppliedOperation):
     Set a column/field values using a transformation operation. Creates new column if doesnt already exist in DataFrame
     Can provide a conditional operation which is used to create a mask
     """
-    calling_translations = wrapping_translations = {'dataframe': 'dataframe'}
 
     def __init__(self, field, transform, condition=None):
         """
         :param str field: Name of column to populate output values in
-        :param callable transform: Callable which either takes Dataframe or Series and returns Series.
-        Can be result of chaining multiple Transform components togehter
-        :param callable condition: callable which takes dataframe  and returns a boolean series mask.
-        Ideally use sublcass of BaseVectorMask which can be chained with bitwise operators
+        :param callable transform: Callable which takes Dataframe and returns Series.
+        :param callable condition: callable which takes dataframe and returns a boolean series mask.
         """
         super().__init__(transform, condition=condition)
         self.field = field
-        self.context = None
 
     def action(self, dataframe):
         """
@@ -37,18 +33,14 @@ class SetColumn(ConditionallyAppliedOperation):
         """
         # Make shallow copy so changes arent made to original DF
         dataframe = dataframe.copy(deep=False)
-        # Generate transform mask with condition if appropriate
-        mask = self.run_wrapped_operation(self.condition, dataframe) if self.condition else None
-        if mask is not None:
-            if not pd.api.types.is_bool_dtype(mask):
-                self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
-
-            # Exit early if mask does not match any values (no changes made)
-            if not mask.any():
-                # Add empty column if doesnt exist
-                if self.field not in dataframe.columns:
-                    dataframe[self.field] = np.nan
-                return dataframe
+        # Get transform mask
+        mask = self.get_mask(dataframe)
+        # Exit early if mask does not match any values (no changes made)
+        if mask is not None and not mask.any():
+            # Add empty column if doesnt exist
+            if self.field not in dataframe.columns:
+                dataframe[self.field] = np.nan
+            return dataframe
 
         # Get Masked/filtered version of Dataframe
         transform_input = self.get_transform_input(dataframe, mask)
@@ -102,7 +94,7 @@ class ConvertColumn(SetColumn):
     def __init__(self, field, column_transform, condition=None, ignore_null=False):
         """
         :param str field: name of field to convert
-        :param column_transform:  Callable which performs transform operation. Will be passed single DF column, should return Series
+        :param column_transform:  Callable which performs transform operation on series and returns transformed series
         :param str input_field: name of field/column to supply to transform function. (defaults to output field)
         :param callable condition: callable which takes dataframe and returns a filter mask.
         :param bool ignore_null: Whether to add condition to mask out null values if condition is not provided
@@ -140,6 +132,45 @@ class ConvertColumn(SetColumn):
     def description(self):
         return 'Convert field "{}" using transform: {} with condition: {}'.format(self.field, self.operation,
                                                                                   self.condition)
+
+
+class ConvertColumns(ConditionallyAppliedOperation):
+    """
+    Select a subset of columns from a DataFrame to apply operations to.
+    Initialise with transform which is provided this subset dataframe and returns a transformed dataframe with same
+    number of columns.
+    Allows for better performance of operations applied to entire DF (e.g. Apply, FillNA) when only subset of fields
+    are required
+    """
+    def __init__(self, fields, transform, condition=None):
+        """
+        :param list fields: List of column names to select to create subset dataframe
+        :param callable transform: Callable which takes Dataframe and returns Dataframe of same size
+        :param callable condition: callable which takes dataframe  and returns a boolean series mask.
+        """
+        super().__init__(transform, condition=condition)
+        if not isinstance(fields, (list, tuple)):
+            raise TypeError('Fields must be provided as list or tuple')
+        self.fields = fields
+
+    def action(self, dataframe):
+
+        # Get conditional mask
+        mask = self.get_mask(dataframe)
+        # Exit early if mask does not match any values (no changes made)
+        if mask is not None and not mask.any():
+            return dataframe
+
+        transform_input = dataframe.loc[mask, self.fields] if mask is not None else dataframe[self.fields]
+        output_subset_df = self.run_wrapped_operation(self.operation, transform_input)
+        # Make shallow copy so changes arent made to original DF
+        output_dataframe = dataframe.copy(deep=False)
+        if mask is None:
+            output_dataframe[self.fields] = output_subset_df
+        else:
+            output_dataframe.loc[mask, self.fields] = output_subset_df
+
+        return output_dataframe
 
 
 class SetField(Operation):

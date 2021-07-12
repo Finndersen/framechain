@@ -235,7 +235,7 @@ class CombineFirst(DataframeOperation):
         return 'Combine "{}" and "{}" using first non-NaN value'.format(self.first_column, self.second_column)
 
 
-class SetColumnOrder(DataframeOperation):
+class SelectColumns(DataframeOperation):
     """
     Set column order or select subset of columns from dataframe
     """
@@ -252,4 +252,4 @@ class SetColumnOrder(DataframeOperation):
         return dataframe[self.columns]
 
     def description(self):
-        return "Set column order: {}".format(self.columns)
+        return "Select columns: {}".format(self.columns)
