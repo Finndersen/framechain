@@ -68,16 +68,18 @@ class RenameColumns(DataframeOperation):
     Operation for renaming columns
     """
 
-    def __init__(self, **rename_mapping):
+    def __init__(self, raise_errors=True, **rename_mapping):
         """
-
+        :param bool raise_errors: Whether to raise exception if field name in mapping does not exist
         :param str rename_mapping: mapping of old column names to new ones
         """
         super().__init__()
         self.rename_mapping = rename_mapping
+        self.raise_errors = raise_errors
 
     def action(self, dataframe):
-        return dataframe.rename(columns=self.rename_mapping)
+        return dataframe.rename(columns=self.rename_mapping,
+                                errors='raise' if self.raise_errors else 'ignore')
 
     def description(self):
         return 'Rename columns: {}'.format(self.rename_mapping)
