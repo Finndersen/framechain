@@ -11,6 +11,7 @@ class AdvancedDelimitedRecordExtractor(BaseDataFrameGenerator):
     Alternative custom implementation of delimited (CSV) record extractor, to support case of files with different
     record types which may have different field specifications. Allows specifying the column index of a field on a per
     record type basis.
+    Adds fields to indicate record type and original record number
     Should use standard DelimitedRecordExtractor if this functionality is not required (better performance)
 
     """

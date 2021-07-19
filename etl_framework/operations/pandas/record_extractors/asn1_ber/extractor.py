@@ -1,7 +1,7 @@
 import pandas as pd
 from etl_framework import exceptions
 # from etl_framework.record_extractors.files.asn1 import asn1_decoder_cython
-from etl_framework.operations.pandas.record_extractors.asn1_ber import asn1_decoder, ASN1BERField
+from etl_framework.operations.pandas.record_extractors.asn1_ber import ASN1BERDecoder, ASN1BERField
 from etl_framework.operations.pandas.record_extractors.base import BaseDataFrameGenerator
 import logging
 
@@ -24,8 +24,10 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
         :param head_trailer_lengths: Mapping which describes format of the ASCII File and Logical header and trailer lines within the ASN1 file.
         :param record_processor: Optional callable used to process each record dictionary before being provided to DataFrame initialisation
         """
-        self.asn_decoder = asn1_decoder.ASN1BERDecoder(record_types, fields, head_trailer_lengths)
-        super().__init__(fields)
+        self.asn_decoder = ASN1BERDecoder(record_types, fields, head_trailer_lengths)
+        # Add dummy recordtype and record number fields so they are added if no records are extracted
+        super().__init__(fields + [ASN1BERField(ASN1BERDecoder.RECORDTYPE_FIELD_NAME, None),
+                                   ASN1BERField(ASN1BERDecoder.RECORDNUMBER_FIELD_NAME, None)])
 
         self.record_processor = self.wrap_operation(record_processor, none_allowed=True)
 

@@ -1,4 +1,4 @@
 from .fields import IntegerField, StringField, TimeField, DateField, TBCDField, InputField, BCDTimestampField, BooleanField, ASN1BERField, IPAddressField, OctetStringField, MSISDNField, EnumeratedField, AddressStringField, DurationField
 from .field_aggregators import SumAggregator, ListAggregator, SetAggregator
 from .extractor import ASN1BERRecordExtractor
-from .asn1_decoder import ASN1RecordType
+from .asn1_decoder import ASN1RecordType, ASN1BERDecoder
