@@ -168,7 +168,7 @@ class BCDTimestampField(ASN1BERField):
     """
     value_converter = BCDTimestampToString()
     column_converter = ColumnToDatetime(format='%y%m%d%H%M%S%z',
-                                        raise_errors=False)
+                                        errors='coerce')
 
 
 class TBCDField(ASN1BERField):

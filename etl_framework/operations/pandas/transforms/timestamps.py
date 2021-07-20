@@ -20,24 +20,21 @@ class ColumnToDatetime(ColumnOperation):
     """
     changes_type = True
 
-    def __init__(self, format=None, raise_errors=True, utc=None):
+    def __init__(self, format=None, **to_datetime_kwargs):
         """
         :param str format: Datetime string format as strptime() format code
-        :param bool raise_errors: Whether to raise string parsing errors. Otherwise will return NaN for invalid inputs
-        :param bool utc: Whether to convert toUTC timezone-aware timestamp
+        :param to_datetime_kwargs: extra kwargs to provide to pd.to_datetime()
         """
         super().__init__()
         self.format = format
-        self.raise_errors = raise_errors
-        self.utc = utc
+        self.to_datetime_kwargs = to_datetime_kwargs
 
     def action(self, column):
         # Get Timestamp series from strings
         dt_series = pd.to_datetime(column,
                                    format=self.format,
                                    infer_datetime_format=not self.format,
-                                   utc=self.utc,
-                                   errors='raise' if self.raise_errors else 'coerce')
+                                   **self.to_datetime_kwargs)
         # to_datetime() will not convert to datetime64 type if timestamp format string contains timezone information
         # (%z) and no valid values are matched. So attempt conversion again just to get appropriate type
         if not is_datetime64_any_dtype(dt_series):
