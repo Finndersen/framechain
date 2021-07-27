@@ -1,9 +1,11 @@
+import logging
+
 import pandas as pd
+
 from etl_framework import exceptions
 # from etl_framework.record_extractors.files.asn1 import asn1_decoder_cython
 from etl_framework.operations.pandas.record_extractors.asn1_ber import ASN1BERDecoder, ASN1BERField
 from etl_framework.operations.pandas.record_extractors.base import BaseDataFrameGenerator
-import logging
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +45,12 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
             else:
                 raise ValueError('Expected bytes data or file reader object, not {}'.format(type(file_data)))
         df = pd.DataFrame([self.record_processor(record) if self.record_processor else record
-                             for record in self.get_records(file_data)])
+                           for record in self.get_records(file_data)])
+
+        # Order columns as input field order (plus any additional fields added by record processor)
+        df = df[[field.name for field in self.fields if field.name in df.columns] +
+                [column for column in df.columns if column not in set(field.name for field in self.fields)]]
+
         return df
 
     def get_records(self, file_data):
@@ -63,5 +70,3 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
                     yield record
         except exceptions.EndOfFileError:
             return
-
-

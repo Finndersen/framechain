@@ -78,6 +78,9 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
                    if field.column_id != field.name}
         dataframe.rename(columns=renames, inplace=True)
 
+        # Order columns as input field order
+        dataframe = dataframe[[field.name for field in self.fields]]
+
         return dataframe
 
 

@@ -58,12 +58,6 @@ class BaseDataFrameGenerator(Operation):
                 if field.name in dataframe.columns:
                     dataframe[field.name] = field.convert_column(dataframe[field.name])
 
-        # Order columns as input field order (plus any additional fields added)
-        if self.fields:
-            dataframe = dataframe[[field.name for field in self.fields if field.name in dataframe.columns] +
-                                  [column for column in dataframe.columns
-                                   if column not in set(field.name for field in self.fields)]]
-
         return dataframe
 
     def create_dataframe(self, input_data):

@@ -192,6 +192,53 @@ class FillNA(Operation):
         return 'Fill NA values with: {}'.format(self.value)
 
 
+class Min(Operation):
+    """
+    Get minimum value of Series (scalar value) or row-wise minimum of Dataframe (Series of minimums for each row)
+    """
+    def __init__(self, axis=None):
+        """
+
+        :param int axis: Axis to find minimum of (0 for column-wise min, 1 for row-wise)
+        """
+        super().__init__()
+        self.axis = axis
+
+    def action(self, df_or_series):
+        """
+
+        :param pd.DataFrame df_or_series:
+        :return:
+        """
+        # Default to axis=1 for DF
+        if isinstance(df_or_series, pd.DataFrame) and self.axis is None:
+            axis = 1
+        else:
+            axis = self.axis
+
+        return df_or_series.min(axis=axis)
+
+
+class Max(Min):
+    """
+    Get maximum value of Series (scalar value) or row-wise maximum of Dataframe (Series of maximums for each row)
+    """
+
+    def action(self, df_or_series):
+        """
+
+        :param pd.DataFrame df_or_series:
+        :return:
+        """
+        # Default to axis=1 for DF
+        if isinstance(df_or_series, pd.DataFrame) and self.axis is None:
+            axis = 1
+        else:
+            axis = self.axis
+
+        return df_or_series.max(axis=axis)
+
+
 class MergeRowValues(Operation):
     """
     Merges values across multiple fields in a row Series. Works similar to Series.combine but can operate over more than

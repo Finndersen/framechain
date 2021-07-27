@@ -181,7 +181,7 @@ class BaseOperation(object):
         self.profiling_active = False  # Whether profiling is currently active (profiled method is running)
         self._call_count = 0  # Number of times operation has been called
         self._cumulative_time = 0  # Cumulative execution time of operation
-        self._wrapped_execution_stats = defaultdict(lambda: [0, 0, 0, 0])
+        self._wrapped_execution_stats = {}
         self._wrapped_execution_cumtime = 0
         self.wrapped_operations = []
 
@@ -254,11 +254,8 @@ class BaseOperation(object):
 
             self._wrapped_execution_cumtime += delta_cum_time
 
-            wrapped_op_stats = self._wrapped_execution_stats[operation.pstat_id]
-            wrapped_op_stats[0] += 1
-            wrapped_op_stats[1] += 1
-            wrapped_op_stats[2] += delta_tot_time
-            wrapped_op_stats[3] += delta_cum_time
+            add_profile_stats(self._wrapped_execution_stats, operation.pstat_id, [1, 1, delta_tot_time, delta_cum_time])
+
             return result
         else:
             return operation(*args, **kwargs)
@@ -309,6 +306,14 @@ class BaseOperation(object):
     def get_profile_data(self):
         profile_data = {}
         self.add_profile_data(profile_data)
+        # Verify profile data
+        for stat_id, stat_data in profile_data.items():
+            caller_data = stat_data[4].values()
+            if caller_data:
+                # Verify stat data is equal to sum of caller data
+                for i in range(4):
+                    if stat_data[i] != sum(cd[i] for cd in caller_data):
+                        raise Exception('Profile data appears to be incorrect for {}:\n{}'.format(stat_id, stat_data))
         return profile_data
 
     def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None):
@@ -342,17 +347,15 @@ class BaseOperation(object):
         node_id = self.pstat_id
         node_stats = self.get_execution_stats()
 
-        if node_id not in profile_data:
-            # Create new entry with no caller detail
-            profile_data[node_id] = node_stats + [{}]
+        add_profile_stats(profile_data, node_id, node_stats + [{}])
 
+        # add profile stats for caller
         if actual_caller:
-            # Calling operation must be a CompoundOperation
             stats_for_caller = actual_caller.get_wrapped_operation_stats(self)
 
             if stats_for_caller[0]:
                 # Add to existing caller details
-                profile_data[node_id][4][proxy_caller.pstat_id] = stats_for_caller
+                add_profile_stats(profile_data[node_id][4], proxy_caller.pstat_id, stats_for_caller)
 
     def get_execution_stats(self):
         """
@@ -391,12 +394,12 @@ class BaseOperation(object):
         :return:
         """
         desc = self.short_description()
-        return ('', id(type(self)), desc)
+        return (type(self).__name__, id(type(self)), desc)
 
     def clear_profile_stats(self):
         self.profiling_active = False
         self._cumulative_time = self._call_count = self._wrapped_execution_cumtime = 0
-        self._wrapped_execution_stats = defaultdict(lambda: [0, 0, 0, 0])
+        self._wrapped_execution_stats = {}#defaultdict(lambda: [0, 0, 0, 0])
         for operation in self.wrapped_operations:
             operation.clear_profile_stats()
 
@@ -435,6 +438,20 @@ class BaseOperation(object):
     def __str__(self):
         return self.description()
 
+def add_profile_stats(container, pstat_id, new_stats):
+    """
+    Create new stats entry or add to existing
+    :param dict container:
+    :param tuple pstat_id:
+    :param list new_stats: stats in form (call_count, call_count, tottime, cumtime)
+    :return:
+    """
+    if pstat_id in container:
+        existing_stats = container[pstat_id]
+        for i in range(4):
+            existing_stats[i] += new_stats[i]
+    else:
+        container[pstat_id] = new_stats
 
 class Operation(BaseOperation, OperationOperators):
     """
@@ -728,7 +745,7 @@ class ChainedOperations(Operation):
                                        proxy_caller=proxy_caller if transparent else self)
 
     def short_description(self):
-        return 'Chain of operations'
+        return 'Chain of operations #{}'.format(id(self))
 
     def description(self):
         return '({}) --> ({})'.format(self.op1, self.op2)

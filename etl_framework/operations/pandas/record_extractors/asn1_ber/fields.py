@@ -24,8 +24,6 @@ class ASN1BERField(InputField):
         self.asn_ids = asn_ids
         self.aggregator = aggregator
         super().__init__(name, **kwargs)
-        if aggregator and self.column_converter:
-            raise ETLFieldError('Cannot specify aggregator on field with column converter')
 
     def get_asn_id_for_record_type(self, record_type):
         """
