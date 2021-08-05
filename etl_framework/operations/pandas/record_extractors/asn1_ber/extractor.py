@@ -19,14 +19,14 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
 
     calling_translations = {'file_data': 'dataframe'}
 
-    def __init__(self, record_types, fields, head_trailer_lengths=None, record_processor=None):
+    def __init__(self, record_types, fields, data_skipper=None, record_processor=None):
         """
         :param list/tuple of ASN1RecordType record_types: ASN1RecordType instances representing target recordtypes
         :param list/tuple of ASN1Field fields: ASN1Field instances describing target fields and ASN1 IDs within target recordtypes
-        :param head_trailer_lengths: Mapping which describes format of the ASCII File and Logical header and trailer lines within the ASN1 file.
+        :param data_skipper: function used to skip header/trailer/filler data before an ASN1 record. Takes record data and current index, returns new index
         :param record_processor: Optional callable used to process each record dictionary before being provided to DataFrame initialisation
         """
-        self.asn_decoder = ASN1BERDecoder(record_types, fields, head_trailer_lengths)
+        self.asn_decoder = ASN1BERDecoder(record_types, fields, data_skipper)
         # Add dummy recordtype and record number fields so they are added if no records are extracted
         super().__init__(fields + [ASN1BERField(ASN1BERDecoder.RECORDTYPE_FIELD_NAME, None),
                                    ASN1BERField(ASN1BERDecoder.RECORDNUMBER_FIELD_NAME, None)])

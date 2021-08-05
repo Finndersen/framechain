@@ -4,6 +4,7 @@ import marshal
 import operator
 import sys
 import tempfile
+import pprint
 from collections import defaultdict
 from time import perf_counter, sleep
 
@@ -37,7 +38,7 @@ class OperationError(Exception):
 
 def profiled(method):
     """
-    Decorator used to profile an operation method
+    Decorator used to profile an operation method, and add exception handling
     Does not record execution details of profiling already active
     Add this decorator to Operation methods that are not called within action() method
     Makes things easier but adds about 10% extra overhead due to extra function call depending on context...
@@ -47,17 +48,25 @@ def profiled(method):
 
     @functools.wraps(method)
     def profiled_method(self, *args, **kwargs):
-        if self.profiling_enabled and not self.profiling_active:
-            self.profiling_active = True
-            start_time = perf_counter()
-            result = method(self, *args, **kwargs)
-            self._call_count += 1
-            self._cumulative_time += perf_counter() - start_time
-            self.profiling_active = False
-        else:
-            result = method(self, *args, **kwargs)
+        try:
+            if self.profiling_enabled and not self.profiling_active:
+                self.profiling_active = True
+                start_time = perf_counter()
+                result = method(self, *args, **kwargs)
+                self._call_count += 1
+                self._cumulative_time += perf_counter() - start_time
+                self.profiling_active = False
+            else:
+                result = method(self, *args, **kwargs)
 
-        return result
+            return result
+        except Exception as exc:
+            # Re-raise exception with operation details if not handled
+            if not isinstance(exc, OperationError):
+                exc = OperationError(exc).with_traceback(sys.exc_info()[2])
+
+            exc.add_location(self)
+            raise exc
 
     return profiled_method
 
@@ -184,6 +193,8 @@ class BaseOperation(object):
         self._wrapped_execution_stats = {}
         self._wrapped_execution_cumtime = 0
         self.wrapped_operations = []
+        self._profile_data = None   # Cached profile data
+        self.added_profile_data = False   # Whether this operation has added its profile data
 
     def error(self, exc_type, message):
         """
@@ -197,6 +208,7 @@ class BaseOperation(object):
     def __call__(self, *args, **kwargs):
         try:
             # Re-implement @profiled logic here to avoid overhead of additional function call
+            # Otherwise would just do: return profiled(self.action)(*args, **kwargs)
             if self.profiling_enabled and not self.profiling_active:
                 start_time = perf_counter()
                 self.profiling_active = True
@@ -286,7 +298,6 @@ class BaseOperation(object):
         :return:
         """
         from snakeviz.ipymagic import open_snakeviz_and_display_in_notebook
-        self.clear_profile_stats()
         self.enable_profiling()
         result = self(input_val)
 
@@ -304,17 +315,13 @@ class BaseOperation(object):
         return result
 
     def get_profile_data(self):
-        profile_data = {}
-        self.add_profile_data(profile_data)
-        # Verify profile data
-        for stat_id, stat_data in profile_data.items():
-            caller_data = stat_data[4].values()
-            if caller_data:
-                # Verify stat data is equal to sum of caller data
-                for i in range(4):
-                    if stat_data[i] != sum(cd[i] for cd in caller_data):
-                        raise Exception('Profile data appears to be incorrect for {}:\n{}'.format(stat_id, stat_data))
-        return profile_data
+        if self._profile_data is None:
+            profile_data = {}
+            self.add_profile_data(profile_data)
+            # Verify profile data
+            verify_profile_data(profile_data)
+            self._profile_data = profile_data
+        return self._profile_data
 
     def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None):
         """
@@ -347,7 +354,9 @@ class BaseOperation(object):
         node_id = self.pstat_id
         node_stats = self.get_execution_stats()
 
-        add_profile_stats(profile_data, node_id, node_stats + [{}])
+        if not self.added_profile_data:
+            add_profile_stats(profile_data, node_id, node_stats + [{}])
+            self.added_profile_data = True
 
         # add profile stats for caller
         if actual_caller:
@@ -397,9 +406,13 @@ class BaseOperation(object):
         return (type(self).__name__, id(type(self)), desc)
 
     def clear_profile_stats(self):
-        self.profiling_active = False
+        """
+        Reset execution profiling statistics
+        :return:
+        """
+        self.profiling_active = self.added_profile_data = False
         self._cumulative_time = self._call_count = self._wrapped_execution_cumtime = 0
-        self._wrapped_execution_stats = {}#defaultdict(lambda: [0, 0, 0, 0])
+        self._wrapped_execution_stats = {}
         for operation in self.wrapped_operations:
             operation.clear_profile_stats()
 
@@ -438,6 +451,7 @@ class BaseOperation(object):
     def __str__(self):
         return self.description()
 
+
 def add_profile_stats(container, pstat_id, new_stats):
     """
     Create new stats entry or add to existing
@@ -453,116 +467,12 @@ def add_profile_stats(container, pstat_id, new_stats):
     else:
         container[pstat_id] = new_stats
 
+
 class Operation(BaseOperation, OperationOperators):
     """
     Base class for operations which are chainable and support operator overloading
     """
     pass
-
-
-class OperatorWrapperMixin(BaseOperation):
-    """
-    Mixin for operations which wrap other operations
-    Handles profiling of wrapped operations
-    Inherits from BaseOperation so it does not have Operator overloads,
-    and can be used with Field operations which do not support operators
-    """
-
-    def __init__(self):
-        """
-
-        :param Operation wrapped_operations: operations which are encapsulated within (called by) this one
-        """
-        self._wrapped_execution_stats = defaultdict(lambda: [0, 0, 0, 0])
-        self._wrapped_execution_cumtime = 0
-        self.wrapped_operations = []
-        super().__init__()
-
-    def wrap_operation(self, operation, **kwargs):
-        """
-        Converts operation and adds to list of wrapped operations
-        :param operation:
-        :param kwargs:
-        :return:
-        """
-        operation = convert_to_operation(operation, **kwargs)
-        if operation:
-            self.wrapped_operations.append(operation)
-        return operation
-
-    def run_wrapped_operation(self, operation, *args, **kwargs):
-        """
-        Run a wrapped operation and record execution time
-        :param Operation operation:
-        :param args:
-        :param kwargs:
-        :return:
-        """
-        if self.profiling_enabled:
-            pre_cum_time = operation.get_cumulative_time()
-            pre_tot_time = operation.get_execute_time()
-            result = operation(*args, **kwargs)
-            delta_cum_time = operation.get_cumulative_time() - pre_cum_time
-            delta_tot_time = operation.get_execute_time() - pre_tot_time
-
-            self._wrapped_execution_cumtime += delta_cum_time
-
-            wrapped_op_stats = self._wrapped_execution_stats[operation.pstat_id]
-            wrapped_op_stats[0] += 1
-            wrapped_op_stats[1] += 1
-            wrapped_op_stats[2] += delta_tot_time
-            wrapped_op_stats[3] += delta_cum_time
-            return result
-        else:
-            return operation(*args, **kwargs)
-
-    def get_wrapped_operation_stats(self, wrapped_operation):
-        """
-        Get execution stats for wrapped operation for this parent operation
-        :param BaseOperation wrapped_operation:
-        :return:
-        """
-        return self._wrapped_execution_stats[wrapped_operation.pstat_id]
-
-    def enable_profiling(self):
-        super().enable_profiling()
-        for operation in self.wrapped_operations:
-            operation.enable_profiling()
-
-    def disable_profiling(self):
-        super().disable_profiling()
-        for operation in self.wrapped_operations:
-            operation.disable_profiling()
-
-    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None):
-        """
-
-        :param dict profile_data:
-        :param Operation actual_caller:
-        :param Operation proxy_caller:
-        :return:
-        """
-        super().add_profile_data(profile_data, actual_caller=actual_caller, proxy_caller=proxy_caller)
-        # Add profile data for wrapped operations
-        for operation in self.wrapped_operations:
-            operation.add_profile_data(profile_data,
-                                       actual_caller=self,
-                                       proxy_caller=self)
-
-    def get_execute_time(self):
-        """
-        Get of just this operation (not including any wrapped sub-operations)
-        Can't just subtract aggregated wrapped operation cumulative time because operation may be re-used elsewhere
-        :return:
-        """
-        return self.get_cumulative_time() - self._wrapped_execution_cumtime
-
-    def clear_profile_stats(self):
-        super().clear_profile_stats()
-        self._wrapped_execution_stats = defaultdict(lambda: [0, 0, 0, 0])
-        self._wrapped_execution_cumtime = 0
-        for operation in self.wrapped_operations:
-            operation.clear_profile_stats()
 
 
 class OperationsWithOperator(Operation):
@@ -900,3 +810,22 @@ def convert_to_operation(val, none_allowed=False, wrap_value=True):
         return Value(val)
     else:
         raise ValueError('Value is not callable: {}'.format(val))
+
+
+def verify_profile_data(profile_data):
+    """
+    Verify PSTAT profile data dictionary
+    :param profile_data:
+    :return:
+    """
+    for stat_id, stat_data in profile_data.items():
+        caller_data = stat_data[4].values()
+        if caller_data:
+            # Verify stat data is equal to sum of caller data
+            for i in range(4):
+                caller_data_sum = sum(cd[i] for cd in caller_data)
+                if stat_data[i] != caller_data_sum:
+                    raise Exception('Profile data appears to be incorrect for {}:\n{}\n{} != {}'.format(stat_id,
+                                                                                                        pprint.pformat(stat_data),
+                                                                                                        stat_data[i],
+                                                                                                        caller_data_sum))

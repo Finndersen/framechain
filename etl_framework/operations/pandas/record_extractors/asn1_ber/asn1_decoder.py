@@ -18,15 +18,14 @@ class ASN1Node(object):
     """
     __slots__ = ('constructed', 'tag_number', 'id', 'start_pos', 'value_pos', 'end_pos', 'parent', 'depth')
 
-    def __init__(self, tag_number, constructed, start_pos, tag_len, value_len, indefinite, parent):
+    def __init__(self, tag_number, constructed, start_pos, tag_len, value_len, parent):
         """
 
         :param int tag_number: ASN tag number of node
         :param bool constructed: Whether node is constructed (True) or primitive (False)
         :param int start_pos: Start position of node in data
         :param int tag_len: Length of node tag data
-        :param int value_len: Length of node value data
-        :param bool indefinite: Whether node length is known (False) or unknown/indefinite (True)
+        :param int value_len: Length of node value data (or None if indefinite field)
         :param ASN1Node parent: Parent node
         """
         self.tag_number = tag_number
@@ -35,7 +34,7 @@ class ASN1Node(object):
         self.parent = parent
 
         self.value_pos = start_pos + tag_len
-        self.end_pos = 0 if indefinite else (start_pos + tag_len + value_len)
+        self.end_pos = None if value_len is None else (start_pos + tag_len + value_len)
         self.depth = parent.depth + 1 if parent else 0
         # Calculate unique absolute ID of node (add 1 so it will always contribute something)
         self.id = (tag_number if parent is None else (parent.id<<8) + tag_number) + 1
@@ -45,15 +44,13 @@ class ASN1BERDecoder(object):
     RECORDTYPE_FIELD_NAME = '_record_type'
     RECORDNUMBER_FIELD_NAME = '_record_number'
 
-    def __init__(self, record_types, fields, header_trailer_lengths):
+    def __init__(self, record_types, fields, data_skipper=None):
         """
         Initialise ASN1 Decoder class with configuration
 
         :param list record_types: List of ASN1RecordType instances representing recordtypes of interest
         :param list fields: List of ASN1BERField or subclasses, representing fields to be extracted
-        :param header_trailer_lengths: Mapping which describes format of the ASCII File and Logical header and trailer lines within the ASN1 file.
-            Keys are binary representations of the first 2 bytes of the header/trailer line (e.g. b'\x46\x44' which corresponds to 'FD')
-            Values are length of header/trailer line (how many positions to skip)
+        :param data_skipper: Function used to skip header/trailer/filler data before an ASN1 record. Takes record data and current index, returns new index
         """
         record_type_names = {record_type.name for record_type in record_types}
         field_names = set()
@@ -82,7 +79,7 @@ class ASN1BERDecoder(object):
 
         self.asn_data = self.record_node = None
         self.asn_index = self.record_number = 0
-        self.header_trailer_lengths = header_trailer_lengths or {}
+        self.data_skipper = data_skipper
         # Validate record types have same ASN ID depth
         assert all([record_type.id_depth == record_types[0].id_depth for record_type in
                     record_types]), "All record schemas must have same recordtype tag length"
@@ -114,27 +111,25 @@ class ASN1BERDecoder(object):
 
     def skip_until_asn_block(self):
         """
-        Skips through file content until reach start of ASN1 node data.
-        Skips through:
-         - blanks/nulls (0)
-         - newline characters (10)
-         - ASCII headers and trailers as configured in header_trailer_lengths (e.g. FDAX2GSMCM10000273020150205102812)
+        Skips through file content (e.g. blanks, newlines, headers/trailers) until reach start of ASN1 node data.
         :return:
         """
-        while 1:
-            try:
-                # Detect blanks
-                if self.asn_data[self.asn_index] in {0, 10}:
-                    self.asn_index += 1
-                # Detect header/trailer (FD,LD,FT,LD)
-                elif bytes(self.asn_data[self.asn_index:self.asn_index + 2]) in self.header_trailer_lengths:
-                    # Skip header/trailer
-                    header_len = self.header_trailer_lengths[bytes(self.asn_data[self.asn_index:self.asn_index + 2])]
-                    self.asn_index += header_len
-                else:
-                    return
-            except IndexError:
-                raise exceptions.EndOfFileError()
+        # while 1:
+        try:
+            # new_index = self.asn_index
+            if self.data_skipper:
+                self.asn_index = self.data_skipper(self.asn_data, self.asn_index)
+
+            # if new_index == self.asn_index:
+            #     # Nothing skipped, should be start of record
+            #     break
+            # elif new_index > self.asn_index:
+            #     self.asn_index = new_index
+            # else:
+            #     raise ValueError('New data index: {} should be greater than previous: {}'.format(new_index,
+            #                                                                                      self.asn_index))
+        except IndexError:
+            raise exceptions.EndOfFileError()
 
     def decode_node(self, parent_node, start_pos=None):
         """
@@ -147,7 +142,6 @@ class ASN1BERDecoder(object):
 
         if start_pos is None:
             start_pos = self.asn_index
-        indefinite = False
 
         # ----------GET TAG CLASS AND TYPE----------------#
         # Get tag class (0 - Universal, 1- Application, 2 - Context-Specific, 3- Private)
@@ -184,12 +178,11 @@ class ASN1BERDecoder(object):
                 tag_len += num_length_bytes
             else:  # Indefinite length field
                 value_len = None
-                indefinite = True
         else:
             # Standard length
             value_len = len_byte & 0x7f
 
-        return ASN1Node(tag_number, constructed, start_pos, tag_len, value_len, indefinite, parent_node)
+        return ASN1Node(tag_number, constructed, start_pos, tag_len, value_len, parent_node)
 
     def build_asn_record(self, record_node=None):
         """
@@ -246,7 +239,7 @@ class ASN1BERDecoder(object):
                 self.traverse_asn(child_node, record_data=record_data)
                 if self.is_node_last_child(child_node):
                     # Update end position if node is indefinite length
-                    if node.end_pos == 0:
+                    if node.end_pos is None:
                         node.end_pos = child_node.end_pos + 2
                     break
 
@@ -260,7 +253,7 @@ class ASN1BERDecoder(object):
         :return: bool
         """
         # If parent node is definite, can use length to determine if last child
-        if node.parent.end_pos != 0:
+        if node.parent.end_pos is not None:
             return node.end_pos == node.parent.end_pos
         # Parent node is indefinite, check for 2 blanks to detect end of parent
         elif self.asn_data[node.end_pos:node.end_pos + 2] == b'\x00\x00':
@@ -274,7 +267,7 @@ class ASN1BERDecoder(object):
         :param ASN1Node node:
         :return:
         """
-        if node.end_pos != 0:
+        if node.end_pos is not None:
             return self.asn_data[node.value_pos:node.end_pos]
         else:
             raise exceptions.ASNDecodeError('Cannot get data of node with no end position')
@@ -289,7 +282,7 @@ class ASN1BERDecoder(object):
         """
         # print('Skipping node: {}'.format(node))
         # Set ASN index to node end pos if node has definite length
-        if node.end_pos != 0:
+        if node.end_pos is not None:
             self.asn_index = node.end_pos
         else:
             # Traverse through indefinite length constructed node to get next node

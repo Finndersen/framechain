@@ -1,6 +1,6 @@
 import pyximport; pyximport.install(language_level="3", inplace=True)
 from .asn1_decoder import ASN1BERDecoder
-from etl_framework.operations.pandas.record_extractors.files import decode_tag
+from etl_framework.operations.pandas.record_extractors.asn1_ber.asn1_decoder_extensions import decode_tag
 
 class ASN1CythonDecoder(ASN1BERDecoder):
     """

@@ -4,6 +4,7 @@ import pandas as pd
 
 from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, \
     TimestampFieldMixin, IntegerFieldMixin
+from etl_framework.operations import profiled
 
 
 class AdvancedDelimitedRecordExtractor(BaseDataFrameGenerator):
@@ -85,6 +86,7 @@ class AdvancedCSVField(InputField):
 
         return self.column_id.get(recordtype, None)
 
+    @profiled
     def get_value(self, record, recordtype):
         """
 

@@ -125,7 +125,7 @@ class InputField(BaseOperation):
 
     def action(self, value):
         """
-        perform vectorised value conversion for field
+        Perform conversion of raw field value
         :param value: raw field value
         :return:
         """

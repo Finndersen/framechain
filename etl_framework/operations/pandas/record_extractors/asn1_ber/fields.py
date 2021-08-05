@@ -47,7 +47,8 @@ class ASN1BERField(InputField):
         :param raw_value:
         :return:
         """
-        converted_value = self(raw_value)
+        # Call self.action() directly for better performance (this method already profiled)
+        converted_value = self.action(raw_value)
         # Do not add if None
         if converted_value is None:
             return
