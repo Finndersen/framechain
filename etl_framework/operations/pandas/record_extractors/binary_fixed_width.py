@@ -11,7 +11,7 @@ class BinaryFixedWidthRecordExtractor(BaseDataFrameGenerator):
     Can provide recordtype_detector which takes raw record data and returns record type, or None if record should be skipped
     """
 
-    def __init__(self, fields, record_length, recordtype_detector=None, record_processor=None):
+    def __init__(self, fields, record_length, recordtype_detector=None, record_processor=None, **kwargs):
         """
         :param list fields: List of BFWFields
         :param int record_length: Length of full record line
@@ -19,7 +19,7 @@ class BinaryFixedWidthRecordExtractor(BaseDataFrameGenerator):
         record type as string, or None if record should be skipped
         :param record_processor: Optional callable to process record dictionary before constructing dataframe
         """
-        super().__init__(fields)
+        super().__init__(fields, **kwargs)
         self.record_length = record_length
         self.recordtype_detector = self.wrap_operation(recordtype_detector, none_allowed=True)
         self.record_processor = self.wrap_operation(record_processor, none_allowed=True)
@@ -58,11 +58,14 @@ class BinaryFixedWidthRecordExtractor(BaseDataFrameGenerator):
 
     def order_fields(self, dataframe):
         # Create ordered list of columns
-        columns = ([self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +             # Record type and number
-                   [field.name for field in self.fields if field.name in dataframe.columns] +      # Defined fields
-                   [column for column in dataframe.columns if column not in set(field.name for field in self.fields)])  # Any other fields added (perhaps by record processor)
-        dataframe = dataframe[columns]
+        # Record type and number + defined fields
+        expected_columns = ([self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +
+                            [field.name for field in self.fields if field.name in dataframe.columns])
+        # Any other fields added (perhaps by record processor)
+        extra_colums = [column for column in dataframe.columns if column not in expected_columns]
+        dataframe = dataframe[expected_columns + extra_colums]
         return dataframe
+
 
 class BFWField(InputField):
     """

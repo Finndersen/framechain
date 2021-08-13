@@ -19,15 +19,17 @@ class BaseDataFrameGenerator(Operation):
     Must define 'create_dataframe' method which takes some input and produces DataFrame with raw field values
     Requires sequence of BaseField subclasses which correspond to columns in DataFrame and contain conversion logic
     """
-    RECORDTYPE_FIELD_NAME = '_record_type'
-    RECORDNUMBER_FIELD_NAME = '_record_number'
 
-    def __init__(self, fields):
+    def __init__(self, fields, record_type_field_name='_record_type', record_number_field_name='_record_number'):
         """
         :param fields: list/tuple of InputField subclasses defining fields to be extracted from input
         and turned into DataFrame columns
+        :param str record_type_field_name: Name of field to store record type name in
+        :param str record_number_field_name: Name of field to store record number in
         """
         super().__init__()
+        self.RECORDTYPE_FIELD_NAME = record_type_field_name
+        self.RECORDNUMBER_FIELD_NAME = record_number_field_name
         # Validate field names are unique
         field_names = set()
         for field in fields:

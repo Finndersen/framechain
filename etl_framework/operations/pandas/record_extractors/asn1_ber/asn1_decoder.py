@@ -43,19 +43,19 @@ class ASN1Node(object):
 class ASN1BERDecoder(object):
 
     def __init__(self, record_types, fields, data_skipper=None,
-                 RECORDTYPE_FIELD_NAME='_record_type',
-                 RECORDNUMBER_FIELD_NAME='_record_number'):
+                 record_type_field_name='_record_type',
+                 record_number_field_name='_record_number'):
         """
         Initialise ASN1 Decoder class with configuration
 
         :param list record_types: List of ASN1RecordType instances representing recordtypes of interest
         :param list fields: List of ASN1BERField or subclasses, representing fields to be extracted
         :param data_skipper: Function used to skip header/trailer/filler data before an ASN1 record. Takes record data and current index, returns new index
-        :param str RECORDTYPE_FIELD_NAME: Name of field to store record type name in
-        :param str RECORDNUMBER_FIELD_NAME: Name of field to store record number in
+        :param str record_type_field_name: Name of field to store record type name in
+        :param str record_number_field_name: Name of field to store record number in
         """
-        self.RECORDTYPE_FIELD_NAME = RECORDTYPE_FIELD_NAME
-        self.RECORDNUMBER_FIELD_NAME = RECORDNUMBER_FIELD_NAME
+        self.RECORDTYPE_FIELD_NAME = record_type_field_name
+        self.RECORDNUMBER_FIELD_NAME = record_number_field_name
         record_type_names = {record_type.name for record_type in record_types}
         field_names = set()
         for field in fields:

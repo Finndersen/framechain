@@ -16,10 +16,8 @@ class AdvancedDelimitedRecordExtractor(BaseDataFrameGenerator):
     Should use standard DelimitedRecordExtractor if this functionality is not required (better performance)
 
     """
-    RECORDTYPE_FIELD_NAME = '_record_type'
-    RECORDNUMBER_FIELD_NAME = '_record_number'
 
-    def __init__(self, fields, recordtype_detector, **csv_reader_kwargs):
+    def __init__(self, fields, recordtype_detector=None, csv_reader_kwargs=None, **kwargs):
         """
 
         :param list/tuple fields: Sequence of AdvancedCSVField
@@ -27,9 +25,9 @@ class AdvancedDelimitedRecordExtractor(BaseDataFrameGenerator):
         :param csv_reader_kwargs: kwargs to provide to csv.reader()
         """
 
-        super().__init__(fields)
-        self.recordtype_detector = self.wrap_operation(recordtype_detector)
-        self.csv_reader_kwargs = csv_reader_kwargs
+        super().__init__(fields, **kwargs)
+        self.recordtype_detector = self.wrap_operation(recordtype_detector, none_allowed=True)
+        self.csv_reader_kwargs = csv_reader_kwargs or {}
 
     def create_dataframe(self, file_reader):
         """
@@ -40,19 +38,21 @@ class AdvancedDelimitedRecordExtractor(BaseDataFrameGenerator):
         output_records = []
         csv_reader = csv.reader(file_reader, **self.csv_reader_kwargs)
         for record_number, raw_row in enumerate(csv_reader, start=1):
-            recordtype = self.run_wrapped_operation(self.recordtype_detector, raw_row)
-
-            # Skip record if no record type
-            if recordtype is None:
-                continue
-
-            if not isinstance(recordtype, str):
-                raise TypeError('Record Type must be a string, not: "{}"'.format(recordtype))
+            if self.recordtype_detector:
+                recordtype = self.run_wrapped_operation(self.recordtype_detector, raw_row)
+                # Skip record if no record type
+                if recordtype is None:
+                    continue
+            else:
+                recordtype = None
 
             record = [recordtype, record_number] + [field.get_value(raw_row, recordtype) for field in self.fields]
             output_records.append(record)
 
-        return pd.DataFrame(data=output_records, dtype='object')
+        return pd.DataFrame(data=output_records,
+                            columns=[self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +
+                                    [field.name for field in self.fields],
+                            dtype='object')
 
 
 class AdvancedCSVField(InputField):

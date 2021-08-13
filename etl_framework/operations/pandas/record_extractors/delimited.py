@@ -18,7 +18,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
     Otherwise, Fields must provide
     """
 
-    def __init__(self, fields, delimiter=',', quoting=csv.QUOTE_MINIMAL, header=True, **read_csv_kwargs):
+    def __init__(self, fields, delimiter=',', quoting=csv.QUOTE_MINIMAL, header=True, read_csv_kwargs=None, **kwargs):
         """
         :param tuple/list fields: List/tuple of CSVField(s)
         :param str delimiter: Delimiter character used for CSV reader
@@ -34,9 +34,9 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
 
         self.delimiter = delimiter
         self.quoting = quoting
-        self.read_csv_kwargs = read_csv_kwargs
+        self.read_csv_kwargs = read_csv_kwargs or {}
         self.header = header
-        super().__init__(fields)
+        super().__init__(fields, **kwargs)
 
     def create_dataframe(self, file_data):
         """

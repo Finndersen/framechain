@@ -19,18 +19,18 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
 
     calling_translations = {'file_data': 'dataframe'}
 
-    def __init__(self, record_types, fields, data_skipper=None, record_processor=None):
+    def __init__(self, record_types, fields, data_skipper=None, record_processor=None, **kwargs):
         """
         :param list/tuple of ASN1RecordType record_types: ASN1RecordType instances representing target recordtypes
         :param list/tuple of ASN1Field fields: ASN1Field instances describing target fields and ASN1 IDs within target recordtypes
         :param data_skipper: function used to skip header/trailer/filler data before an ASN1 record. Takes record data and current index, returns new index
         :param record_processor: Optional callable used to process each record dictionary before being provided to DataFrame initialisation
         """
-        self.asn_decoder = ASN1BERDecoder(record_types, fields, data_skipper,
-                                          RECORDTYPE_FIELD_NAME=self.RECORDTYPE_FIELD_NAME,
-                                          RECORDNUMBER_FIELD_NAME=self.RECORDNUMBER_FIELD_NAME)
         # Add dummy recordtype and record number fields so they are added if no records are extracted
-        super().__init__(fields)
+        super().__init__(fields, **kwargs)
+        self.asn_decoder = ASN1BERDecoder(record_types, fields, data_skipper,
+                                          record_type_field_name=self.RECORDTYPE_FIELD_NAME,
+                                          record_number_field_name=self.RECORDNUMBER_FIELD_NAME)
 
         self.record_processor = self.wrap_operation(record_processor, none_allowed=True)
 
@@ -70,8 +70,10 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
 
     def order_fields(self, dataframe):
         # Create ordered list of columns
-        columns = ([self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +             # Record type and number
-                   [field.name for field in self.fields if field.name in dataframe.columns] +      # Defined fields
-                   [column for column in dataframe.columns if column not in set(field.name for field in self.fields)])  # Any other fields added (perhaps by record processor)
-        dataframe = dataframe[columns]
+        # Record type and number + defined fields
+        expected_columns = ([self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +
+                            [field.name for field in self.fields if field.name in dataframe.columns])
+        # Any other fields added (perhaps by record processor)
+        extra_colums = [column for column in dataframe.columns if column not in expected_columns]
+        dataframe = dataframe[expected_columns + extra_colums]
         return dataframe
