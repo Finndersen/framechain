@@ -11,22 +11,26 @@ class BinaryFixedWidthRecordExtractor(BaseDataFrameGenerator):
     Can provide recordtype_detector which takes raw record data and returns record type, or None if record should be skipped
     """
 
-    def __init__(self, fields, record_length, recordtype_detector=None):
+    def __init__(self, fields, record_length, recordtype_detector=None, record_processor=None):
         """
         :param list fields: List of BFWFields
         :param int record_length: Length of full record line
         :param recordtype_detector: Optional callable which takes raw content of record line and returns
         record type as string, or None if record should be skipped
+        :param record_processor: Optional callable to process record dictionary before constructing dataframe
         """
         super().__init__(fields)
         self.record_length = record_length
         self.recordtype_detector = self.wrap_operation(recordtype_detector, none_allowed=True)
+        self.record_processor = self.wrap_operation(record_processor, none_allowed=True)
 
     def create_dataframe(self, data_file):
         records = []
         # Loop through lines in file
+        record_number = 0
         while True:
             record_data = data_file.read(self.record_length)
+            record_number += 1
             # Detect end of file
             if not record_data:
                 break
@@ -39,15 +43,26 @@ class BinaryFixedWidthRecordExtractor(BaseDataFrameGenerator):
             else:
                 record_type = None
 
-            record_dict = {}
+            # Build record dictionary
+            record_dict = {self.RECORDTYPE_FIELD_NAME: record_type, self.RECORDNUMBER_FIELD_NAME: record_number}
             for field in self.fields:
                 field.add_to_record(record_type, record_data, record_dict)
 
+            # Apply record procsesing
+            if self.record_processor:
+                record_dict = self.run_wrapped_operation(self.record_processor, record_dict)
             # Add record to list
             records.append(record_dict)
         # Build DataFrame from records and headers
-        return pd.DataFrame(records, columns=[field.name for field in self.fields])
+        return pd.DataFrame(records)
 
+    def order_fields(self, dataframe):
+        # Create ordered list of columns
+        columns = ([self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +             # Record type and number
+                   [field.name for field in self.fields if field.name in dataframe.columns] +      # Defined fields
+                   [column for column in dataframe.columns if column not in set(field.name for field in self.fields)])  # Any other fields added (perhaps by record processor)
+        dataframe = dataframe[columns]
+        return dataframe
 
 class BFWField(InputField):
     """

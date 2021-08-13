@@ -1,6 +1,7 @@
 import csv
 
 import pandas as pd
+import numpy as np
 
 from etl_framework.operations.io import TextReader
 from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, \
@@ -77,9 +78,8 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
                    for field in self.fields
                    if field.column_id != field.name}
         dataframe.rename(columns=renames, inplace=True)
-
-        # Order columns as input field order
-        dataframe = dataframe[[field.name for field in self.fields]]
+        # Add record numbers
+        dataframe[self.RECORDNUMBER_FIELD_NAME] = pd.Series(np.arange(1, len(dataframe.index)))
 
         return dataframe
 

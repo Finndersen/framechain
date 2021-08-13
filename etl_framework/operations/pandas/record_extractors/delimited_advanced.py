@@ -49,14 +49,10 @@ class AdvancedDelimitedRecordExtractor(BaseDataFrameGenerator):
             if not isinstance(recordtype, str):
                 raise TypeError('Record Type must be a string, not: "{}"'.format(recordtype))
 
-            record = [field.get_value(raw_row, recordtype) for field in self.fields] + [recordtype,
-                                                                                        record_number]
+            record = [recordtype, record_number] + [field.get_value(raw_row, recordtype) for field in self.fields]
             output_records.append(record)
 
-        return pd.DataFrame(data=output_records,
-                            columns=[field.name for field in self.fields] + [self.RECORDTYPE_FIELD_NAME,
-                                                                             self.RECORDNUMBER_FIELD_NAME],
-                            dtype='object')
+        return pd.DataFrame(data=output_records, dtype='object')
 
 
 class AdvancedCSVField(InputField):

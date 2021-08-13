@@ -26,10 +26,11 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
         :param data_skipper: function used to skip header/trailer/filler data before an ASN1 record. Takes record data and current index, returns new index
         :param record_processor: Optional callable used to process each record dictionary before being provided to DataFrame initialisation
         """
-        self.asn_decoder = ASN1BERDecoder(record_types, fields, data_skipper)
+        self.asn_decoder = ASN1BERDecoder(record_types, fields, data_skipper,
+                                          RECORDTYPE_FIELD_NAME=self.RECORDTYPE_FIELD_NAME,
+                                          RECORDNUMBER_FIELD_NAME=self.RECORDNUMBER_FIELD_NAME)
         # Add dummy recordtype and record number fields so they are added if no records are extracted
-        super().__init__(fields + [ASN1BERField(ASN1BERDecoder.RECORDTYPE_FIELD_NAME, None),
-                                   ASN1BERField(ASN1BERDecoder.RECORDNUMBER_FIELD_NAME, None)])
+        super().__init__(fields)
 
         self.record_processor = self.wrap_operation(record_processor, none_allowed=True)
 
@@ -44,13 +45,9 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
                 file_data = file_data.read()
             else:
                 raise ValueError('Expected bytes data or file reader object, not {}'.format(type(file_data)))
-        df = pd.DataFrame([self.record_processor(record) if self.record_processor else record
+        df = pd.DataFrame([self.run_wrapped_operation(self.record_processor, record)
+                           if self.record_processor else record
                            for record in self.get_records(file_data)])
-
-        # Order columns as input field order (plus any additional fields added by record processor)
-        df = df[[field.name for field in self.fields if field.name in df.columns] +
-                [column for column in df.columns if column not in set(field.name for field in self.fields)]]
-
         return df
 
     def get_records(self, file_data):
@@ -70,3 +67,11 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
                     yield record
         except exceptions.EndOfFileError:
             return
+
+    def order_fields(self, dataframe):
+        # Create ordered list of columns
+        columns = ([self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +             # Record type and number
+                   [field.name for field in self.fields if field.name in dataframe.columns] +      # Defined fields
+                   [column for column in dataframe.columns if column not in set(field.name for field in self.fields)])  # Any other fields added (perhaps by record processor)
+        dataframe = dataframe[columns]
+        return dataframe

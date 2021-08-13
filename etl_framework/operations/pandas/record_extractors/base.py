@@ -19,6 +19,8 @@ class BaseDataFrameGenerator(Operation):
     Must define 'create_dataframe' method which takes some input and produces DataFrame with raw field values
     Requires sequence of BaseField subclasses which correspond to columns in DataFrame and contain conversion logic
     """
+    RECORDTYPE_FIELD_NAME = '_record_type'
+    RECORDNUMBER_FIELD_NAME = '_record_number'
 
     def __init__(self, fields):
         """
@@ -47,10 +49,15 @@ class BaseDataFrameGenerator(Operation):
         with LogDuration(log,
                          'Extracting records from input...'):  # TODO: Remove logging and add dedicated operation for logging
             dataframe = self.create_dataframe(input_data)
-            #  Add any missing fields as Null column
-            for field in self.fields:
-                if field.name not in dataframe.columns and field.add_if_missing:
-                    dataframe[field.name] = np.nan
+
+        #  Add any missing fields as Null column
+        for field_name in ([self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +
+                           [field.name for field in self.fields if field.add_if_missing]):
+            if field_name not in dataframe.columns:
+                dataframe[field_name] = np.nan
+
+        # Order fields
+        dataframe = self.order_fields(dataframe)
 
         # Perform field vector conversions
         with LogDuration(log, 'Performing vector field conversions...'):
@@ -67,6 +74,15 @@ class BaseDataFrameGenerator(Operation):
         :return: pd.DataFrame
         """
         raise NotImplementedError()
+
+    def order_fields(self, dataframe):
+        """
+        Set dataframe column order
+        :param dataframe:
+        :return:
+        """
+        return dataframe[[self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +
+                         [field.name for field in self.fields]]
 
     def get_execute_time(self):
         """
