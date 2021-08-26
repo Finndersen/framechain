@@ -1,6 +1,6 @@
 import pandas as pd
 import pytz
-from pandas.api.types import is_datetime64_any_dtype
+from pandas.api.types import is_datetime64_any_dtype, is_numeric_dtype
 
 from etl_framework.operations.base import Operation
 from etl_framework.operations.pandas.base import ColumnOperation
@@ -66,6 +66,9 @@ class ToTimedelta(ColumnOperation):
         self.units = units
 
     def action(self, column):
+        # Verify that column is numeric is unit is specified (earlier versions of pandas do not perform this check)
+        if self.units and not is_numeric_dtype(column):
+            raise TypeError('Input must be numeric when units are specified')
         return pd.to_timedelta(column, unit=self.units)
 
     def description(self):

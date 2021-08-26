@@ -1,8 +1,5 @@
 from etl_framework.operations.base import Operation
 from etl_framework.exceptions import MissingFieldError
-import logging
-
-log = logging.getLogger(__name__)
 
 
 class BaseDataframeExporter(Operation):
@@ -23,9 +20,7 @@ class BaseDataframeExporter(Operation):
     def action(self, dataframe):
         # Return nothing if dataframe is empty
         if dataframe.empty and not self.create_for_empty:
-            log.debug('DataFrame is empty, not creating any output')
             return None
-        log.debug('Generating output from DataFrame (preview):\n{}\n{}'.format(dataframe.head(10), dataframe.dtypes))
         # Verify all desired output columns are in dataframe
         if self.columns:
             for column in self.columns:

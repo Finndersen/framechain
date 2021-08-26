@@ -9,12 +9,35 @@ class TBCDBytesToString(Operation):
     """
 
     def action(self, value):
+        """
+
+        :param bytes value: Nibble-swapped BCD byte value
+        :return:
+        """
         # Nibble swap each octet and convert to hex string
         hex_str = bytes((((x & 0x0F) << 4) + (x >> 4)) for x in value).hex().upper()
         # Strip Trailing 'f' blank character (slightly faster than rstrip('f'))
         if hex_str[-1] == 'F':
             hex_str = hex_str[:-1]
         return hex_str
+
+
+class StringToTBCDBytes(Operation):
+    """
+    Convert string value (containing only 0-F) to TBCDBytes format
+    Append trailing 'f' if odd length, convert to bytes, nibble swap
+    Inverse of TBCDBytesToString
+    e.g. '505013485571338' -> b'\x05\x051\x84U\x173\xf8'
+    """
+    def action(self, value):
+        """
+
+        :param str value: String value
+        :return: bytes
+        """
+        if len(value) % 2:
+            value += 'f'
+        return bytes((((x & 0x0F) << 4) + (x >> 4)) for x in bytes.fromhex(value))
 
 
 class ConvertAddressString(Operation):
@@ -30,22 +53,61 @@ class ConvertAddressString(Operation):
         return binary_value[0:1].hex() + self.run_wrapped_operation(self.tbcd_converter, binary_value[1:])
 
 
-class BinaryToIPv4Address(Operation):
+class BinaryIPv4AddressToString(Operation):
     """
     Convert IPv4 address in binary format (4 bytes, each representing one address segment) to XXX.XXX.XXX.XXX format
+    b'\x0a\x3c\x35\x03' -> '10.60.53.3'
     """
     def action(self, byte_str):
+        """
+
+        :param bytes byte_str: Binary iPv4 address
+        :return:
+        """
         return '{}.{}.{}.{}'.format(byte_str[0], byte_str[1], byte_str[2], byte_str[3])
 
 
-class BinaryToIPv6Address(Operation):
+class IPv4AddressStringToBinary(Operation):
+    """
+    Convert IPv4 Address string to binary
+    '10.60.53.3' -> b'\x0a\x3c\x35\x03'
+    """
+    def action(self, ipv4_str):
+        """
+
+        :param str ipv4_str:
+        :return:
+        """
+        return bytes(int(val) for val in ipv4_str.split('.'))
+
+
+class BinaryIPv6AddressToString(Operation):
     """
     Convert IPv6 address in Binary format (8x pairs of bytes) to string
-    COULD PROBABLY BE VECTORISED IF REQUIRED
+    b'\x20\x01\x0d\xb8\x00\x01\x00\x00\x00\x00\x0a\xb9\xc0\xa8\x01\x02' -> '2001:0db8:0001:0000:0000:0ab9:C0A8:0102'
     """
     def action(self, value):
+        """
+
+        :param bytes value: Binary IPv6 address
+        :return:
+        """
         hex_str = value.hex()
         return ':'.join([hex_str[i * 4:(i * 4) + 4] for i in range(8)])
+
+
+class IPv6AddressStringToBinary(Operation):
+    """
+    Convert IPv6 Address string to binary
+    '2001:0db8:0001:0000:0000:0ab9:C0A8:0102' -> b'\x20\x01\x0d\xb8\x00\x01\x00\x00\x00\x00\x0a\xb9\xc0\xa8\x01\x02'
+    """
+    def action(self, ipv6_str):
+        """
+
+        :param str ipv6_str:
+        :return:
+        """
+        return bytes.fromhex(''.join(ipv6_str.split(':')))
 
 
 class BCDTimestampToString(Operation):

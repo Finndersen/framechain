@@ -139,9 +139,7 @@ class Fork(Operation):
 
         # Execute chain of operations
         for i, operation in enumerate(self.fork_operations):
-            value = copy.deepcopy(input_val)
-            with LogDuration(log, 'Running fork #{} operation: {}'.format(i, operation)):
-                value = self.run_wrapped_operation(operation, value)
+            value = self.run_wrapped_operation(operation, copy.deepcopy(input_val))
             outputs.append(value)
         return outputs
 

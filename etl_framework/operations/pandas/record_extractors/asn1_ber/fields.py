@@ -1,7 +1,7 @@
 from etl_framework.operations.pandas import ColumnToDatetime, ColumnMap, BytesColumnToString, AsType, ToInteger
 from etl_framework.operations import profiled, BinaryDurationToInt
 from etl_framework.operations.transforms import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, BytesToDateString, BytesToTime, BytesToTimeString, \
-    BytesToHexString, TBCDBytesToString, BinaryToIPv4Address, BinaryToIPv6Address, BCDTimestampToString
+    BytesToHexString, TBCDBytesToString, BinaryIPv4AddressToString, BinaryIPv6AddressToString, BCDTimestampToString
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
 from etl_framework.exceptions import ETLFieldError
 from etl_framework.operations.transforms.telephony import ConvertAddressString
@@ -186,9 +186,9 @@ class IPAddressField(ASN1BERField):
     column_type = object
     def __init__(self, *args, version='ipv4', **kwargs):
         if version == 'ipv4':
-            converter = BinaryToIPv4Address()
+            converter = BinaryIPv4AddressToString()
         elif version == 'ipv6':
-            converter = BinaryToIPv6Address()
+            converter = BinaryIPv6AddressToString()
         else:
             raise ValueError('IPAddressField version must be "ipv4" or "ipv6"')
         super().__init__(*args, value_converter=converter, **kwargs)
