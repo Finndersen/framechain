@@ -11,12 +11,9 @@ class BaseFileWriter(Operation):
     """
     Base class for a file writer, takes file content and writes to some destination
     File content can be binary or text, depending on output generator
-    Output file path can either be provided during initialisation, or as keyword argument when operation is called
-    (use MapArguments operation to provide extra argument)
     """
-    calling_translations = {'file_data': 'output'}
 
-    def __init__(self, output_path=None):
+    def __init__(self, output_path):
         """
 
         :param str output_path: Output file path
@@ -24,19 +21,16 @@ class BaseFileWriter(Operation):
         super().__init__()
         self.output_path = output_path
 
-    def action(self, file_data, output_path=None):
+    def action(self, file_data):
         """
         Write file content to destination (can be for local filesytem, network filesystem, HDFS, String.IO buffer, etc)
         :return:
         """
-        output_path = output_path or self.output_path
-        if not output_path:
-            self.error(ValueError, 'Output file path not provided during initialisation or execution')
-        self.write_data(file_data, output_path)
-        self.verify(output_path)
-        return self.get_return_value(output_path)
+        self.write_data(file_data)
+        self.verify()
+        return self.get_return_value()
 
-    def write_data(self, file_data, output_path):
+    def write_data(self, file_data):
         """
         Write file data to path
         :param file_data:
@@ -45,14 +39,14 @@ class BaseFileWriter(Operation):
         """
         raise NotImplementedError()
 
-    def verify(self, output_path):
+    def verify(self):
         """
         Verify that output file has been written succesfully
         :return:
         """
         pass
 
-    def get_return_value(self, output_path):
+    def get_return_value(self):
         """
         Get return value for FileOutputGenerator relating to output file
         :return:
@@ -96,19 +90,19 @@ class LocalFileWriter(BaseFileWriter):
         self.append = append
         self.overwrite = overwrite
 
-    def write_data(self, file_data, output_path):
+    def write_data(self, file_data):
         # Create output directory if not exists (and absolute path provided)
-        dir_name = os.path.dirname(output_path)
+        dir_name = os.path.dirname(self.output_path)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
 
         # Determine write mode and newline parameter
         if self.append:
             mode = 'a'
-            write_path = output_path
+            write_path = self.output_path
         else:
             mode = 'w'
-            write_path = output_path + '.tmp'
+            write_path = self.output_path + '.tmp'
 
         newline = None
 
@@ -121,11 +115,11 @@ class LocalFileWriter(BaseFileWriter):
             self.error(ValueError, 'Input data must be string or bytes')
 
         # Delete existing file if overwrite enabled
-        if os.path.isfile(output_path):
+        if os.path.isfile(self.output_path):
             if self.overwrite:
-                os.remove(output_path)
+                os.remove(self.output_path)
             else:
-                raise FileExistsError('File already exists: {}'.format(output_path))
+                raise FileExistsError('File already exists: {}'.format(self.output_path))
 
         # Write to temporary filename and rename when finished
         if self.compress:
@@ -138,18 +132,15 @@ class LocalFileWriter(BaseFileWriter):
             f.write(file_data)
 
         try:
-            os.rename(write_path, output_path)
+            os.rename(write_path, self.output_path)
         except OSError:
-            self.error(FileNotFoundError, 'Failed to write file at: {}'.format(output_path))
+            self.error(FileNotFoundError, 'Failed to write file at: {}'.format(self.output_path))
 
-    def get_return_value(self, output_path):
-        return output_path
+    def get_return_value(self):
+        return self.output_path
 
     def description(self):
-        str = 'Write file'
-        if self.output_path:
-            str += ' at: {}'.format(self.output_path)
-        return str
+        return 'Write file at: {}'.format(self.output_path)
 
 
 class HDFSFileSystemWriter(BaseFileWriter):
@@ -175,15 +166,15 @@ class HDFSFileSystemWriter(BaseFileWriter):
         self.overwrite = overwrite
         log.debug('Connecting to HDFS node: {} as user: {}'.format(url, user))
 
-    def write_data(self, file_data, output_path):
+    def write_data(self, file_data):
         # If file already exists, delete first to avoid error
-        if self.client.status(output_path, strict=False):
+        if self.client.status(self.output_path, strict=False):
             if self.overwrite:
-                log.warning('File: {} already exists on HDFS, removing before writing new file'.format(output_path))
-                self.client.delete(output_path)
+                log.warning('File: {} already exists on HDFS, removing before writing new file'.format(self.output_path))
+                self.client.delete(self.output_path)
             else:
-                self.error(FileExistsError, 'File already exists at path: {}'.format(output_path))
-        log.debug('Writing file to HDFS path: {}'.format(output_path))
+                self.error(FileExistsError, 'File already exists at path: {}'.format(self.output_path))
+        log.debug('Writing file to HDFS path: {}'.format(self.output_path))
         # Guess encoding to use based on file data type
         if self.encoding == 'infer':
             if isinstance(file_data, str):
@@ -192,25 +183,22 @@ class HDFSFileSystemWriter(BaseFileWriter):
                 encoding = None
         else:
             encoding = self.encoding
-        self.client.write(output_path, data=file_data, encoding=encoding)
+        self.client.write(self.output_path, data=file_data, encoding=encoding)
 
-    def get_return_value(self, output_path):
+    def get_return_value(self):
         # Get return value of where file was written
-        return '{}:{}'.format(self.url, output_path)
+        return '{}:{}'.format(self.url, self.output_path)
 
-    def verify(self, output_path):
+    def verify(self):
         """
         Verify file was written successfully
         :return:
         """
-        if not self.client.status(output_path, strict=False):
-            self.error(FileNotFoundError, 'Failed to write file on HDFS at: {}'.format(output_path))
+        if not self.client.status(self.output_path, strict=False):
+            self.error(FileNotFoundError, 'Failed to write file on HDFS at: {}'.format(self.output_path))
 
     def description(self):
-        str = 'Write file to HDFS'
-        if self.output_path:
-            str += ' at {}:{}'.format(self.url, self.output_path)
-        return str
+        return 'Write file to HDFS at {}:{}'.format(self.url, self.output_path)
 
 
 class STDOUTWriter(Operation):

@@ -12,11 +12,12 @@ from etl_framework.utils import convert_timezone
 
 class ColumnToDatetime(ColumnOperation):
     """
-    Convert a column of string values to datetime
+    Convert a column of string values to datetime.
     Runs as vector operation so should be faster than all other scalar methods
     Will attempt to infer format if not provided
-    If timestamps have different timezones, output will be object array and ConvertColumnTimezone
-    with different_timezones=True can be used to convert all to desired timezone
+
+    If timestamps have different timezones (and utc=True not specified), output will be object array and
+    ConvertColumnTimezone with different_timezones=True can be used to convert all to desired timezone
     """
     changes_type = True
 
@@ -35,10 +36,6 @@ class ColumnToDatetime(ColumnOperation):
                                    format=self.format,
                                    infer_datetime_format=not self.format,
                                    **self.to_datetime_kwargs)
-        # to_datetime() will not convert to datetime64 type if timestamp format string contains timezone information
-        # (%z) and no valid values are matched. So attempt conversion again just to get appropriate type
-        if not is_datetime64_any_dtype(dt_series):
-            dt_series = pd.to_datetime(dt_series)
         return dt_series
 
     def description(self):
@@ -55,24 +52,26 @@ class ToTimedelta(ColumnOperation):
     """
     VALID_UNITS = {'D', 'h', 'm', 's', 'ms', 'us', 'ns'}
 
-    def __init__(self, units='s'):
+    def __init__(self, units='s', coerce_errors=False):
         """
 
         :param str units: Units of timedelta
+        :param bool coerce_errors: Whether to coerce error values (invalid parsing) into NaT
         """
         super().__init__()
         if units not in self.VALID_UNITS:
             self.error(ValueError, 'Invalid timedelta units: "{}". Choose from: {}'.format(units, self.VALID_UNITS))
         self.units = units
+        self.coerce_errors = coerce_errors
 
     def action(self, column):
         # Verify that column is numeric is unit is specified (earlier versions of pandas do not perform this check)
         if self.units and not is_numeric_dtype(column):
             raise TypeError('Input must be numeric when units are specified')
-        return pd.to_timedelta(column, unit=self.units)
+        return pd.to_timedelta(column, unit=self.units, errors='coerce' if self.coerce_errors else 'raise')
 
     def description(self):
-        return "Integer to timedelta with units: {}".format(self.units)
+        return "Value to timedelta with units: {}".format(self.units)
 
 
 class TimestampFromColumns(Operation):
