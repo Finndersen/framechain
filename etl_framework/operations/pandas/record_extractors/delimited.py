@@ -55,8 +55,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         elif not hasattr(file_data, 'read'):
             raise ValueError('Input file data should be str, bytes or reader object, not {}'.format(type(file_data)))
 
-        # If file has headers, use_columns is list of field names, otherwise list of field positions
-        use_columns = [field.column_id for field in self.fields]
+
         # Get mapping of field header names or column IDs to dtype definitions
         dtypes = {field.column_id: field.dtype
                   for field in self.fields if field.dtype}
@@ -68,17 +67,21 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
                                 sep=self.delimiter,
                                 header=0 if self.header else None,
                                 quoting=self.quoting,
-                                usecols=use_columns,
                                 dtype=dtypes,
                                 converters=converters,
                                 **self.read_csv_kwargs)
+
+        # Select required columns from dataframe. Do this here instead of using 'usecols' in pd.read_csv() because
+        # it disables functionality of error_bad_lines=False or on_bad_lines='skip'
+        # If file has headers, use_columns is list of field names (str), otherwise list of field positions (int)
+        dataframe = dataframe[[field.column_id for field in self.fields]]
 
         # Rename columns to actual field names
         renames = {field.column_id: field.name
                    for field in self.fields
                    if field.column_id != field.name}
         dataframe.rename(columns=renames, inplace=True)
-        # Add record numbers
+        # Add record number column
         dataframe[self.RECORDNUMBER_FIELD_NAME] = pd.Series(np.arange(1, len(dataframe.index)))
 
         return dataframe

@@ -3,6 +3,7 @@ from etl_framework.operations import BytesToString, profiled
 
 from .base import BaseDataFrameGenerator, InputField
 from etl_framework.operations.transforms import BytesToHexString, BytesToInteger
+from etl_framework.operations.pandas import ToInteger
 
 
 class BinaryFixedWidthRecordExtractor(BaseDataFrameGenerator):
@@ -136,10 +137,11 @@ class IntegerField(BFWField):
     """
     def __init__(self, *args, bytes_reversed=False, **kwargs):
         """
-
+        Add value converter to convert bytes to integer, and column converter to nullable integer to handle cases when
+        there may be missing values in column
         :param args:
         :param bool bytes_reversed: Whether bytes are reversed (little endian byteorder encoding)
         :param kwargs:
         """
         super().__init__(*args, value_converter=BytesToInteger(byteorder='little' if bytes_reversed else 'big'),
-                         **kwargs)
+                         column_converter=ToInteger(large=True), **kwargs)
