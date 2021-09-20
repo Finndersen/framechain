@@ -82,7 +82,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
                    if field.column_id != field.name}
         dataframe.rename(columns=renames, inplace=True)
         # Add record number column
-        dataframe[self.RECORDNUMBER_FIELD_NAME] = pd.Series(np.arange(1, len(dataframe.index)))
+        dataframe[self.RECORDNUMBER_FIELD_NAME] = pd.Series(np.arange(1, len(dataframe.index) + 1))
 
         return dataframe
 

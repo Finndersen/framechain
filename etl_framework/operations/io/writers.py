@@ -69,7 +69,7 @@ class LocalFileWriter(BaseFileWriter):
     Returns output file path
     """
 
-    def __init__(self, output_path=None, newline='', compress=None, append=False, overwrite=True):
+    def __init__(self, output_path, newline='', compress=None, append=False, overwrite=True):
         """
 
         :param str output_path: output file path
@@ -104,13 +104,12 @@ class LocalFileWriter(BaseFileWriter):
             mode = 'w'
             write_path = self.output_path + '.tmp'
 
-        newline = None
-
         if isinstance(file_data, str):
             mode += 't'
             newline = self.newline
         elif isinstance(file_data, (bytes, bytearray)):
             mode += 'b'
+            newline = None
         else:
             self.error(ValueError, 'Input data must be string or bytes')
 

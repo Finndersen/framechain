@@ -2,7 +2,7 @@ import logging
 
 import pandas as pd
 
-from etl_framework import exceptions
+from etl_framework.exceptions import ETLConfigurationError, EndOfFileError
 # from etl_framework.record_extractors.files.asn1 import asn1_decoder_cython
 from etl_framework.operations.pandas.record_extractors.asn1_ber import ASN1BERDecoder, ASN1BERField
 from etl_framework.operations.pandas.record_extractors.base import BaseDataFrameGenerator
@@ -26,11 +26,15 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
         :param data_skipper: function used to skip header/trailer/filler data before an ASN1 record. Takes record data and current index, returns new index
         :param record_processor: Optional callable used to process each record dictionary before being provided to DataFrame initialisation
         """
-        # Add dummy recordtype and record number fields so they are added if no records are extracted
         super().__init__(fields, **kwargs)
+        # Validate no field has same name as recordtype field name
+        for field in fields:
+            if field.name == self.RECORDNUMBER_FIELD_NAME:
+                raise ETLConfigurationError(
+                    'ASN1 record schema defined with field name same as recordtype number name: {}'.format(
+                        self.RECORDNUMBER_FIELD_NAME))
         self.asn_decoder = ASN1BERDecoder(record_types, fields, data_skipper,
-                                          record_type_field_name=self.RECORDTYPE_FIELD_NAME,
-                                          record_number_field_name=self.RECORDNUMBER_FIELD_NAME)
+                                          record_type_field_name=self.RECORDTYPE_FIELD_NAME)
 
         self.record_processor = self.wrap_operation(record_processor, none_allowed=True)
 
@@ -58,14 +62,17 @@ class ASN1BERRecordExtractor(BaseDataFrameGenerator):
         """
         self.asn_decoder.set_asn_data(file_data)
         try:
+            record_number = 1
             while 1:
                 # Skip to start of next record
                 self.asn_decoder.skip_until_asn_block()
                 # Root node = entire record
-                record = self.asn_decoder.build_asn_record()
+                record = self.asn_decoder.decode_asn_record()
                 if record:
+                    record[self.RECORDNUMBER_FIELD_NAME] = record_number
                     yield record
-        except exceptions.EndOfFileError:
+                record_number += 1
+        except EndOfFileError:
             return
 
     def order_fields(self, dataframe):

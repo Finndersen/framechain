@@ -1,4 +1,4 @@
-from etl_framework import exceptions
+from etl_framework.exceptions import EndOfFileError, ETLConfigurationError, ASNDecodeError
 from collections import defaultdict
 import logging
 
@@ -43,8 +43,7 @@ class ASN1Node(object):
 class ASN1BERDecoder(object):
 
     def __init__(self, record_types, fields, data_skipper=None,
-                 record_type_field_name='_record_type',
-                 record_number_field_name='_record_number'):
+                 record_type_field_name='_record_type'):
         """
         Initialise ASN1 Decoder class with configuration
 
@@ -55,7 +54,6 @@ class ASN1BERDecoder(object):
         :param str record_number_field_name: Name of field to store record number in
         """
         self.RECORDTYPE_FIELD_NAME = record_type_field_name
-        self.RECORDNUMBER_FIELD_NAME = record_number_field_name
         record_type_names = {record_type.name for record_type in record_types}
         field_names = set()
         for field in fields:
@@ -63,7 +61,7 @@ class ASN1BERDecoder(object):
             if isinstance(field.asn_ids, dict):
                 for record_type_name in field.asn_ids:
                     if record_type_name not in record_type_names:
-                        raise exceptions.ETLConfigurationError('Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
+                        raise ETLConfigurationError('Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
 
             # Validate no duplicate field names
             if field.name in field_names:
@@ -71,18 +69,13 @@ class ASN1BERDecoder(object):
 
             # Validate no field has same name as recordtype field name
             if field.name == self.RECORDTYPE_FIELD_NAME:
-                raise exceptions.ETLConfigurationError('ASN1 record schema defined with field name same as recordtype field name: {}'.format(
+                raise ETLConfigurationError('ASN1 record schema defined with field name same as recordtype field name: {}'.format(
                                self.RECORDTYPE_FIELD_NAME))
-
-            # Validate no field has same name as recordtype field name
-            if field.name == self.RECORDNUMBER_FIELD_NAME:
-                raise exceptions.ETLConfigurationError('ASN1 record schema defined with field name same as recordtype number name: {}'.format(
-                               self.RECORDNUMBER_FIELD_NAME))
 
             field_names.add(field.name)
 
-        self.asn_data = self.record_node = None
-        self.asn_index = self.record_number = 0
+        self.asn_data = self.record_node = self.data_len = None
+        self.asn_index = 0
         self.data_skipper = data_skipper
         # Validate record types have same ASN ID depth
         assert all([record_type.id_depth == record_types[0].id_depth for record_type in
@@ -111,31 +104,23 @@ class ASN1BERDecoder(object):
         self.asn_data = asn_data
         self.asn_index = 0
         self.record_node = None
-        self.record_number = 0
+        self.data_len = len(asn_data)
 
     def skip_until_asn_block(self):
         """
         Skips through file content (e.g. blanks, newlines, headers/trailers) until reach start of ASN1 node data.
         :return:
         """
-        # while 1:
         try:
-            # new_index = self.asn_index
             if self.data_skipper:
                 self.asn_index = self.data_skipper(self.asn_data, self.asn_index)
 
-            # if new_index == self.asn_index:
-            #     # Nothing skipped, should be start of record
-            #     break
-            # elif new_index > self.asn_index:
-            #     self.asn_index = new_index
-            # else:
-            #     raise ValueError('New data index: {} should be greater than previous: {}'.format(new_index,
-            #                                                                                      self.asn_index))
+            if self.asn_index >= self.data_len:
+                raise EndOfFileError()
         except IndexError:
-            raise exceptions.EndOfFileError()
+            raise EndOfFileError()
 
-    def decode_node(self, parent_node, start_pos=None):
+    def decode_node(self, parent_node=None, start_pos=None):
         """
         Decode the ASN1 node starting at specified start_pos in the ASN1 data file.
         If no start_pos is specified, current asn_index is used
@@ -188,18 +173,16 @@ class ASN1BERDecoder(object):
 
         return ASN1Node(tag_number, constructed, start_pos, tag_len, value_len, parent_node)
 
-    def build_asn_record(self, record_node=None):
+    def decode_asn_record(self):
         """
         Entry point for constructing record dictionary from provided root node (corresponds to full ASN1 record)
         Creates record in form of dictionary of field names and values
         Returns None if record is skipped (not target record type)
-        :param ASN1Node record_node: Root-level ASN1 node of record to decode
         (get automatically from current data position if not specified)
         :return:
         """
-        self.record_node = record_node or self.decode_node(None)
-        self.record_number += 1
-        record_data = {self.RECORDNUMBER_FIELD_NAME: self.record_number}
+        self.record_node = self.decode_node()
+        record_data = {}
         try:
             self.traverse_asn(self.record_node, record_data=record_data)
         except SkipRecordError:
@@ -239,7 +222,7 @@ class ASN1BERDecoder(object):
         if node.constructed:
             self.asn_index = node.value_pos
             while True:
-                child_node = self.decode_node(node)
+                child_node = self.decode_node(parent_node=node)
                 self.traverse_asn(child_node, record_data=record_data)
                 if self.is_node_last_child(child_node):
                     # Update end position if node is indefinite length
@@ -274,7 +257,7 @@ class ASN1BERDecoder(object):
         if node.end_pos is not None:
             return self.asn_data[node.value_pos:node.end_pos]
         else:
-            raise exceptions.ASNDecodeError('Cannot get data of node with no end position')
+            raise ASNDecodeError('Cannot get data of node with no end position')
 
     def skip_node(self, node):
         """
@@ -299,7 +282,7 @@ class ASN1BERDecoder(object):
         :return:
         """
         self.skip_node(node)
-        return self.decode_node(node.parent)
+        return self.decode_node(parent_node=node.parent)
 
     def first_child_node(self, node):
         """
@@ -308,9 +291,9 @@ class ASN1BERDecoder(object):
         :return:
         """
         if node.constructed:
-            return self.decode_node(node, node.value_pos)
+            return self.decode_node(parent_node=node, start_pos=node.value_pos)
         else:
-            raise exceptions.ASNDecodeError('Cant get child node of primitive node')
+            raise ASNDecodeError('Cant get child node of primitive node')
 
 
 def convert_asn_tag_to_unique_integer(asn_tag):

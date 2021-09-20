@@ -27,7 +27,7 @@ class StringToTBCDBytes(Operation):
     Convert string value (containing only 0-F) to TBCDBytes format
     Append trailing 'f' if odd length, convert to bytes, nibble swap
     Inverse of TBCDBytesToString
-    e.g. '505013485571338' -> b'\x05\x051\x84U\x173\xf8'
+    e.g. '505013485571338' -> b'\x05\x05\x31\x84\x55\x17\x33\xf8'
     """
     def action(self, value):
         """

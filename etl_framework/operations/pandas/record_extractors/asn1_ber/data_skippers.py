@@ -63,6 +63,15 @@ class SkipHeaders(object):
         # Whether file contains CHF headers
         self.chf_headers = chf_headers
 
+    def reset(self):
+        """
+        Reset state
+        :return:
+        """
+        self.in_cmp_block = False
+        self.in_cmp_file = False
+        self.chf_file_end_pos = 0
+
     def __call__(self, data, index):
         """
 
@@ -70,6 +79,10 @@ class SkipHeaders(object):
         :param int index:
         :return:
         """
+        # Reset state for new file
+        if index == 0:
+            self.reset()
+
         while True:
             initial_index = index
 
@@ -110,6 +123,8 @@ class SkipHeaders(object):
                 # print('{}: Skipping CMP File Trailer'.format(index))
                 self.in_cmp_file = False
                 index += 42
+                # Should be end of file, can return
+                return index
 
             # Skip newline or blank
             if data[index] in {0, 10}:

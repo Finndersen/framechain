@@ -123,16 +123,18 @@ def convert_timezone(timezone, allow_none=False):
     if timezone is None and allow_none:
         return None
 
+    if isinstance(timezone, tzinfo):
+        return timezone
+
     if isinstance(timezone, str):
+        # Construct from timezone string
         return pytz.timezone(timezone)
 
     if isinstance(timezone, int):
+        # Construct static-offset timezone from UTC Offset in seconds
         td = timedelta(seconds=timezone)
 
         return tzoffset('UTC{}{}'.format('+' if timezone >= 0 else '-',
                                          td if timezone >= 0 else -td), td)
 
-    if isinstance(timezone, tzinfo):
-        return timezone
-    else:
-        raise TypeError('Invalid timezone value: {}'.format(timezone))
+    raise TypeError('Invalid timezone value: {}'.format(timezone))
