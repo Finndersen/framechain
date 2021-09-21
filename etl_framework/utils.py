@@ -1,13 +1,13 @@
 import functools
-import logging, time
-# from .operations import Value
-from datetime import timedelta, tzinfo
-
+import logging
 import pytz
-from dateutil.tz.tz import tzoffset
+import random
+import string
+import time
+from datetime import timedelta, tzinfo, timezone
+from pytz.tzinfo import StaticTzInfo, BaseTzInfo
 
 from .exceptions import ETLConfigurationError
-import random, string
 
 
 class LogDuration(object):
@@ -19,7 +19,7 @@ class LogDuration(object):
     def __init__(self, logger, message, level=logging.DEBUG):
         self.logger = logger
         self.level = level
-        self.logger.log(self.level, '\t'*LogDuration.indent + message)
+        self.logger.log(self.level, '\t' * LogDuration.indent + message)
         LogDuration.indent += 1
         self.start_time = time.perf_counter()
 
@@ -28,7 +28,8 @@ class LogDuration(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         LogDuration.indent -= 1
-        self.logger.log(self.level, '{}Duration: {:.05f}'.format('\t'*LogDuration.indent, time.perf_counter() - self.start_time))
+        self.logger.log(self.level,
+                        '{}Duration: {:.05f}'.format('\t' * LogDuration.indent, time.perf_counter() - self.start_time))
 
 
 class Memoized(object):
@@ -58,25 +59,6 @@ class Memoized(object):
 
     def __getattr__(self, item):
         return getattr(self.func, item)
-
-
-def validate_callable(op, optional=True, wrap_scalar=True):
-    """
-    Validates whether provided object is callable. if not, wraps scalar value in Value() operation to make it callable
-    If value is basic scalar, wrap with Value() operation
-    :param op:
-    :param bool optional: Whether func is allowed to be None
-    :param bool wrap_scalar: Whether to wrap non-callable value in Value() operation
-    :return:
-    """
-    if optional and op is None:
-        return None
-    if callable(op):
-        return op
-    # if wrap_scalar:
-    #     return Value(op)
-
-    raise ETLConfigurationError('Provided operation is not callable: {}'.format(op))
 
 
 class ConfigurableClass(object):
@@ -109,32 +91,69 @@ def randomstring(length):
     return ''.join(random.choice(letters) for i in range(length))
 
 
-def convert_timezone(timezone, allow_none=False):
+def convert_timezone(tz, allow_none=False):
     """
-    Convert a timezone represented in various formats to tzinfo instance
+    Convert a timezone represented in various formats to tzinfo instance which is a subclass of pytz.BaseTzInfo
+    (which has .localize() method so dont need to differentiate between static vs dynamic UTC offset timezones)
     Can be supplied as either:
     - Timezone name as string
     - UTC Offset in seconds as integer
-    - tzinfo instance
-    :param timezone:
+    - UTC offset as timedelta
+    - tzinfo instance (datetime.timezone, pytz.timezone, dateutil.tz.tz.tzoffset etc)
+    :param tz:
     :param allow_none: Whether None value is allowed to be provided and passed through
     :return:
     """
-    if timezone is None and allow_none:
+    if tz is None and allow_none:
         return None
 
-    if isinstance(timezone, tzinfo):
-        return timezone
-
-    if isinstance(timezone, str):
+    if isinstance(tz, str):
         # Construct from timezone string
-        return pytz.timezone(timezone)
+        tz = pytz.timezone(tz)
 
-    if isinstance(timezone, int):
+    elif isinstance(tz, int):
         # Construct static-offset timezone from UTC Offset in seconds
-        td = timedelta(seconds=timezone)
+        tz = StaticOffsetTz(timedelta(seconds=tz))
 
-        return tzoffset('UTC{}{}'.format('+' if timezone >= 0 else '-',
-                                         td if timezone >= 0 else -td), td)
+    elif isinstance(tz, timedelta):
+        tz = StaticOffsetTz(tz)
 
-    raise TypeError('Invalid timezone value: {}'.format(timezone))
+    if isinstance(tz, BaseTzInfo):
+        # Is subclass of BaseTzInfo so has .localize() method as desired
+        return tz
+
+    if isinstance(tz, tzinfo):
+        # Construct StaticTz instance from other tzinfo type (e.g. datetime.timezone, dateutil.tz.tz.tzinfo)
+        return StaticOffsetTz(tz.utcoffset(None), name=tz.tzname(None))
+
+    raise TypeError('Invalid timezone value: {}'.format(tz))
+
+
+class StaticOffsetTz(StaticTzInfo):
+    """
+    tzinfo class to represent a static UTC offset, which has .localize() method so can be used interchangeably with
+    other pytz.timezone objects
+    """
+
+    def __init__(self, utcoffset, name=None):
+        """
+
+        :param timedelta utcoffset:
+        :param str name:
+        """
+        if not isinstance(utcoffset, timedelta):
+            raise TypeError('Must initialise {} with timedelta'.format(type(self).__name__))
+        self._tzname = name or _name_from_offset(utcoffset)
+        self._utcoffset = utcoffset
+        self.zone = self._tzname
+
+
+def _name_from_offset(delta):
+    if delta < timedelta(0):
+        sign = '-'
+        delta = -delta
+    else:
+        sign = '+'
+    hours, rest = divmod(delta, timedelta(hours=1))
+    minutes = rest // timedelta(minutes=1)
+    return 'UTC{}{:02d}:{:02d}'.format(sign, hours, minutes)

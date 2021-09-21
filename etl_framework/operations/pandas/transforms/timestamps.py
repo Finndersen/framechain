@@ -1,13 +1,15 @@
 import pandas as pd
-import pytz
 from pandas.api.types import is_datetime64_any_dtype, is_numeric_dtype
 
 from etl_framework.operations.base import Operation
 from etl_framework.operations.pandas.base import ColumnOperation
+from etl_framework.operations.transforms.datetime import ConvertTimezone as ConvertTimezoneNormal, \
+    SetTimezone as SetTimezoneNormal
+
+
 #############################################################################################################
 #   TIMESTAMP PARSING
 #############################################################################################################
-from etl_framework.utils import convert_timezone
 
 
 class ColumnToDatetime(ColumnOperation):
@@ -95,19 +97,10 @@ class TimestampFromColumns(Operation):
 #############################################################################################################
 #   TIMEZONES
 #############################################################################################################
-class SetColumnTimezone(ColumnOperation):
+class SetColumnTimezone(SetTimezoneNormal):
     """
     Add timezone information to existing naive timestamp column, or remove timezone info from aware timestamp column
     """
-
-    def __init__(self, timezone):
-        """
-
-        :param str, int, tzinfo, None timezone: Timezone to apply to all values.
-        Use None to remove timezone information but not change timestamp
-        """
-        super().__init__()
-        self.timezone = convert_timezone(timezone, allow_none=True)
 
     def action(self, timestamp_column):
         """
@@ -115,65 +108,30 @@ class SetColumnTimezone(ColumnOperation):
         """
         return timestamp_column.dt.tz_localize(self.timezone)
 
-    def description(self):
-        if self.timezone:
-            return 'Set timezone to: {}'.format(self.timezone)
-        else:
-            return 'Remove timezone'
 
-
-class SetTimezone(Operation):
+class SetDynamicTimezone(Operation):
     """
-    Transform used to add timezone information to pandas.Timestamp value
-    Can initialise with single timezone to apply to all values, or can use ArgumentMapper to provide different timezone
-    for each value
+    Transform used to add dynamic timezone information to pandas.Timestamp value
+    Need to provide both timestamp and timezone value when calling
     """
 
-    def __init__(self, timezone=None):
-        """
-
-        :param str, int, tzinfo, False timezone: Timezone to apply to all values.
-        Use False to remove timezone information but not change timestamp
-        """
-        super().__init__()
-        self.timezone = convert_timezone(timezone, allow_none=True)
-
-    def action(self, timestamp, timezone=None):
+    def action(self, timestamp, timezone):
         """
         :param timestamp: pandas.Timestamp value
+        :param timezone: tzinfo instance
         """
-        timezone = timezone or self.timezone
-
-        if timezone is None:
-            self.error(ValueError,
-                       'Must provide timezone during initialisation or during execution with ArgumentMapper')
-        elif timezone is False:
-            timezone = None
 
         return timestamp.tz_localize(timezone)
 
     def description(self):
-        if self.timezone:
-            return 'Set timezone to: {}'.format(self.timezone)
-        else:
-            return 'Set varying timezone'
+        return 'Set dynamic timezone'
 
 
-class ConvertColumnTimezone(ColumnOperation):
+class ConvertTimezone(ConvertTimezoneNormal):
     """
-    Perform timezone conversion on either entire Timestamp column which is already timezone-aware
-    Set different_timezones=True if timestamps in column may have different timezones
+    Perform timezone conversion on datetime column or single Timestamp instance which is already timezone-aware
+    Supports datetime columns with multiple timezones by first converting all to UTC
     """
-
-    def __init__(self, timezone='UTC', different_timezones=False):
-        """
-        :param str, int, tzinfo, None timezone: Timezone to convert to (default to UTC).
-            If None, will convert to UTC and remove timezone information
-        :param bool different_timezones: Whether or not column contains timestamps in varying timezones
-        """
-        super().__init__()
-        self.timezone = convert_timezone(timezone, allow_none=True)
-        self.different_timezones = different_timezones
 
     def action(self, timestamp_column):
         """
@@ -181,52 +139,17 @@ class ConvertColumnTimezone(ColumnOperation):
         :param timestamp_column: column (series) of pandas.Timestamp
         :return:
         """
-        if self.different_timezones:
-            # Re-interpret timestamps with different timezones into UTC
+        # Re-interpret timestamps with different timezones into UTC
+        if not is_datetime64_any_dtype(timestamp_column):
             timestamp_column = pd.to_datetime(timestamp_column, utc=True)
-            # Convert to other timezone if necessary
-            if self.timezone != pytz.utc:
-                return timestamp_column.dt.tz_convert(self.timezone)
-            else:
-                return timestamp_column
-        else:
-            # All timestamps have same timezone, can use tz_convert directly
+
+        # Convert to desired timezone
+        try:
+            # Attempt conversion for Timestamp first
+            return timestamp_column.tz_convert(self.timezone)
+        except TypeError:
+            # Attempt conversion for datetime Series
             return timestamp_column.dt.tz_convert(self.timezone)
-
-    def description(self):
-        if self.timezone is None:
-            return 'Convert timezone to UTC and remove tzinfo'
-        else:
-            return 'Convert timezone to {}'.format(self.timezone)
-
-
-class ConvertTimezone(Operation):
-    """
-    Perform timezone conversion for single Timestamp value which is already timezone-aware
-    """
-
-    def __init__(self, timezone=pytz.utc):
-        """
-        :param str, int, tzinfo, None timezone: Timezone to convert to (default to UTC).
-        If None, will convert to UTC and remove timezone information
-        """
-        super().__init__()
-        self.timezone = convert_timezone(timezone, allow_none=True)
-
-    def action(self, timestamp):
-        """
-
-        :param timestamp: pandas.Timestamp value
-        :return:
-        """
-        # Convert scalar value
-        return timestamp.tz_convert(self.timezone)
-
-    def description(self):
-        if self.timezone is None:
-            return 'Convert timezone to UTC and remove tzinfo'
-        else:
-            return 'Convert timezone to {}'.format(self.timezone)
 
 
 class DateTimeProperty(ColumnOperation):

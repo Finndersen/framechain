@@ -1,5 +1,5 @@
 from etl_framework.operations import Operation
-from etl_framework.utils import Memoized, validate_callable
+from etl_framework.utils import Memoized
 
 
 class Cached(Operation):
@@ -86,8 +86,6 @@ class DynamicallyConfiguredOperation(Operation):
         :param op_args: args to initialise operation with
         :param op_kwargs: kwargs to initialise operation with
         """
-        (validate_callable(arg) for arg in op_args)
-        (validate_callable(arg) for arg in op_kwargs.values())
         self.op_args = op_args
         self.op_kwargs = op_kwargs
         self.operation_class = operation_class
