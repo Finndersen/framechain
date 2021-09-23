@@ -1,21 +1,20 @@
-import pytz
 from etl_framework.operations import Operation
 from etl_framework.utils import convert_timezone
 
 
 class SetTimezone(Operation):
     """
-    Adds timezone information to naive datetime
+    Adds timezone information to naive datetime, or remove from aware datetime
     Timezone can be supplied as either:
     - Timezone name as string
     - UTC Offset in seconds as integer
     - UTC offset as timedelta
     - tzinfo instance (datetime.timezone, pytz.timezone, dateutil.tz.tz.tzoffset etc)
+    - None (remove timezone information)
     """
-    def __init__(self, timezone=pytz.utc):
+    def __init__(self, timezone):
         """
-        :param str, int, tzinfo, timedelta, None timezone: Timezone to add (default to UTC).
-        If None, removes timezone information
+        :param str, int, tzinfo, timedelta, None timezone: Timezone to add. If None, removes timezone information
         """
         super().__init__()
         self.timezone = convert_timezone(timezone, allow_none=True)
@@ -47,9 +46,9 @@ class ConvertTimezone(Operation):
     - UTC offset as timedelta
     - tzinfo instance (datetime.timezone, pytz.timezone, dateutil.tz.tz.tzoffset etc)
     """
-    def __init__(self, timezone=pytz.utc):
+    def __init__(self, timezone):
         """
-        :param str, int, tzinfo timezone: Timezone to convert to (default to UTC).
+        :param str, int, tzinfo timezone: Timezone to convert to
         """
         super().__init__()
         self.timezone = convert_timezone(timezone, allow_none=False)

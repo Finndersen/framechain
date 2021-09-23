@@ -1,10 +1,11 @@
 import functools
 import logging
-import pytz
 import random
 import string
 import time
-from datetime import timedelta, tzinfo, timezone
+from datetime import timedelta, tzinfo
+
+import pytz
 from pytz.tzinfo import StaticTzInfo, BaseTzInfo
 
 from .exceptions import ETLConfigurationError
@@ -129,23 +130,26 @@ def convert_timezone(tz, allow_none=False):
     raise TypeError('Invalid timezone value: {}'.format(tz))
 
 
-class StaticOffsetTz(StaticTzInfo):
+def StaticOffsetTz(utcoffset, name=None):
     """
-    tzinfo class to represent a static UTC offset, which has .localize() method so can be used interchangeably with
-    other pytz.timezone objects
+    Get a tzinfo instance with static offset from UTC
+    Need to dynamically construct the class instead of initialising instance with parameters because:
+    "Special requirement for pickling: A tzinfo subclass must have an __init__() method that can be called with no
+    arguments, otherwise it can be pickled but possibly not unpickled again"
+
+    :param utcoffset:
+    :param name:
+    :return:
     """
+    if not isinstance(utcoffset, timedelta):
+        raise TypeError('UTC Offset must be timedelta, not: {}'.format(utcoffset))
 
-    def __init__(self, utcoffset, name=None):
-        """
-
-        :param timedelta utcoffset:
-        :param str name:
-        """
-        if not isinstance(utcoffset, timedelta):
-            raise TypeError('Must initialise {} with timedelta'.format(type(self).__name__))
-        self._tzname = name or _name_from_offset(utcoffset)
-        self._utcoffset = utcoffset
-        self.zone = self._tzname
+    name = name or _name_from_offset(utcoffset)
+    cls = type(name, (StaticTzInfo,), dict(
+        zone=name,
+        _utcoffset=utcoffset,
+        _tzname=name))
+    return cls()
 
 
 def _name_from_offset(delta):
