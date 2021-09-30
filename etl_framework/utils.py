@@ -161,3 +161,15 @@ def _name_from_offset(delta):
     hours, rest = divmod(delta, timedelta(hours=1))
     minutes = rest // timedelta(minutes=1)
     return 'UTC{}{:02d}:{:02d}'.format(sign, hours, minutes)
+
+
+def chunks(iterator, n):
+    """
+    Split an iterator into chunks of length n
+    :param iterator:
+    :param int n: Chunk size (or None to skip chunking)
+    :return:
+    """
+    for first in iterator: # take one item out (exits loop if `iterator` is empty)
+        rest_of_chunk = itertools.islice(iterator, 0, n - 1)
+        yield itertools.chain([first], rest_of_chunk)  # concatenate the first item back

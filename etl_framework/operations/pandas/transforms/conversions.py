@@ -6,7 +6,6 @@ class StringToInteger(ColumnOperation):
     """
     Convert a column of strings to integer
     """
-    changes_type = True
 
     def action(self, column):
         return pd.to_numeric(column)
@@ -16,20 +15,26 @@ class StringToInteger(ColumnOperation):
 
 
 class AsType(ColumnOperation):
-    """Convert type of column"""
-    changes_type = True
+    """
+    Convert type of column
+    """
 
-    def __init__(self, to_type, ignore_errors=False):
+    def __init__(self, to_type, ignore_errors=False, copy=True):
         """
-
-        :param str (numpy type) or python type to_type:
+        (be very careful setting copy=False as changes to values then may propagate to other pandas objects).
+        :param str, type to_type:
+        :param bool ignore_errors:
+        :param bool copy: Whether to return copy of Series
         """
         super().__init__()
         self.to_type = to_type
         self.ignore_errors = ignore_errors
+        self.copy = copy
 
     def action(self, column):
-        return column.astype(self.to_type, errors='ignore' if self.ignore_errors else 'raise')
+        return column.astype(self.to_type,
+                             copy=self.copy,
+                             errors='ignore' if self.ignore_errors else 'raise')
 
     def description(self):
         return 'Convert type to {}'.format(self.to_type)

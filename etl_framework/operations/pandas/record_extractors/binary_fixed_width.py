@@ -3,7 +3,7 @@ from etl_framework.operations import BytesToString, profiled
 
 from .base import BaseDataFrameGenerator, InputField
 from etl_framework.operations.transforms import BytesToHexString, BytesToInteger
-from etl_framework.operations.pandas import ToInteger
+from etl_framework.operations.pandas import ToNullableInteger
 
 
 class BinaryFixedWidthRecordExtractor(BaseDataFrameGenerator):
@@ -121,27 +121,31 @@ class HexField(BFWField):
     """
     Field class which converts values to hex representation
     """
-    value_converter = BytesToHexString()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, value_converter=BytesToHexString(), **kwargs)
 
 
 class StringField(BFWField):
     """
     Field class which decodes byte content to string
     """
-    value_converter = BytesToString()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, value_converter=BytesToString(), **kwargs)
 
 
 class IntegerField(BFWField):
     """
     Field which converts byte values to integer
     """
-    def __init__(self, *args, bytes_reversed=False, **kwargs):
+    def __init__(self, *args, bytes_reversed=False, size=32, **kwargs):
         """
         Add value converter to convert bytes to integer, and column converter to nullable integer to handle cases when
         there may be missing values in column
         :param args:
         :param bool bytes_reversed: Whether bytes are reversed (little endian byteorder encoding)
+        :param int size: Integer size
         :param kwargs:
         """
-        super().__init__(*args, value_converter=BytesToInteger(byteorder='little' if bytes_reversed else 'big'),
-                         column_converter=ToInteger(large=True), **kwargs)
+        super().__init__(*args,
+                         value_converter=BytesToInteger(byteorder='little' if bytes_reversed else 'big'),
+                         column_converter=ToNullableInteger(size=size), **kwargs)

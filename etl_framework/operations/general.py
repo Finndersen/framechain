@@ -4,23 +4,8 @@ Operations for controlling flow of pipeline
 import logging
 from etl_framework.context import transform_context
 from etl_framework.operations import Operation
-from etl_framework.operations.types import TypeTranslations
 
 log = logging.getLogger(__name__)
-
-
-class Pass(Operation):
-    """
-    Returns input value with no change
-    Can be useful as initial operation in Transform to start chain
-    """
-    calling_translations = TypeTranslations.GENERIC_TYPE_TRANSLATIONS
-
-    def action(self, value):
-        return value
-
-    def description(self):
-        return 'Pass'
 
 
 class ContextValue(Operation):

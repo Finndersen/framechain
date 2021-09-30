@@ -3,11 +3,11 @@ Operations which are used to help construct more complex field-based transforms 
 """
 import pandas as pd
 import numpy as np
-from pandas.core.dtypes.common import is_datetime64_any_dtype
+from pandas.api.types import is_datetime64_any_dtype, is_categorical_dtype
 
 from etl_framework.exceptions import ChangedDataTypError, ETLConfigurationError
 from etl_framework.operations import Operation
-from etl_framework.operations.pandas import Field, IsNull, ConditionallyAppliedOperation, ColumnOfValue
+from etl_framework.operations.pandas import Field, IsNull, ConditionallyAppliedOperation
 
 
 class SetColumn(ConditionallyAppliedOperation):
@@ -49,17 +49,28 @@ class SetColumn(ConditionallyAppliedOperation):
         if not isinstance(output_series, pd.Series):
             self.error(ValueError,
                        'Transform: {} returns: "{}", not return a Series'.format(self.operation, type(output_series)))
+
         # Add output Series back into original dataframe
         if mask is not None:
-            # Raise error if datetime dtype of column has changed (can cause issues with timezone mismatch)
-            if (self.field in dataframe.columns
-                    and dataframe[self.field].dtype != output_series.dtype
-                    and is_datetime64_any_dtype(dataframe[self.field].dtype)):
-                raise ChangedDataTypError(
-                    'Operation: "{}" changes datetime datatype of masked values from "{}" to "{}", which may have undesired effect. '
-                    'Removing any conditions may resolve the issue'.format(self.operation,
-                                                                           dataframe[self.field].dtype,
-                                                                           output_series.dtype))
+            # Perform checks if integrating with existing column
+            if self.field in dataframe.columns:
+                # Raise error if datetime dtype of column has changed (can cause issues with timezone mismatch)
+                if (dataframe[self.field].dtype != output_series.dtype and
+                        is_datetime64_any_dtype(dataframe[self.field].dtype)):
+                    raise ChangedDataTypError(
+                        'Operation: "{}" changes datetime datatype of masked values from "{}" to "{}", which may have undesired effect. '
+                        'Removing any conditions may resolve the issue'.format(self.operation,
+                                                                               dataframe[self.field].dtype,
+                                                                               output_series.dtype))
+
+                # If merging with existing Category column, need to align categories
+                if is_categorical_dtype(dataframe[self.field]):
+                    output_series = output_series.astype('category')
+                    all_categories = dataframe[self.field].cat.categories.union(output_series.cat.categories)
+                    dataframe[self.field] = dataframe[self.field].cat.set_categories(all_categories)
+                    output_series = output_series.cat.set_categories(all_categories)
+
+            # Need to use .loc with mask to not overwrite existing values
             dataframe.loc[mask, self.field] = output_series
         else:
             dataframe[self.field] = output_series
@@ -73,13 +84,13 @@ class SetColumn(ConditionallyAppliedOperation):
         return dataframe[mask] if mask is not None else dataframe
 
     def short_description(self):
-        rep = 'Set field "{}"'.format(self.field)
+        rep = 'Set column "{}"'.format(self.field)
         if self.condition:
             rep = rep + ' with condition: {}'.format(self.condition)
         return rep
 
     def description(self):
-        rep = 'Set field "{}" value using transform: {}'.format(self.field, self.operation)
+        rep = 'Set column "{}" value using transform: {}'.format(self.field, self.operation)
         if self.condition:
             rep = rep + ' with condition: {}'.format(self.condition)
         return rep
@@ -124,13 +135,13 @@ class ConvertColumn(SetColumn):
         return dataframe.loc[mask, self.field].copy() if mask is not None else dataframe[self.field]
 
     def short_description(self):
-        rep = 'Convert field "{}"'.format(self.field)
+        rep = 'Convert column "{}"'.format(self.field)
         if self.condition:
             rep = rep + ' with condition: {}'.format(self.condition)
         return rep
 
     def description(self):
-        return 'Convert field "{}" using transform: {} with condition: {}'.format(self.field, self.operation,
+        return 'Convert column "{}" using transform: {} with condition: {}'.format(self.field, self.operation,
                                                                                   self.condition)
 
 

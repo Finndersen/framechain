@@ -5,7 +5,7 @@ import numpy as np
 
 from etl_framework.operations.io import TextReader
 from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, \
-    TimestampFieldMixin
+    TimestampFieldMixin, IntegerFieldMixin
 from etl_framework.operations.transforms import BytesToString
 
 
@@ -91,18 +91,15 @@ class CSVField(InputField):
     """
     Object representing field in delimited (e.g. CSV) file
     """
-    dtype = None  # Data type to convert to during original Dataframe construction (before column converter)
 
-    def __init__(self, name, column_id=None, dtype=None, **kwargs):
+    def __init__(self, name, column_id=None, **kwargs):
         """
 
         :param str name: Name of field
         :param int/str column_id: 0-indexed Id of column for this field (for when file does not contain headers)
         or Name of field in file header (for when file contains headers) - defaults to field name
-        :param str dtype: Data type to convert to (e.g. 'float64', 'int64', 'int32')
         """
         self.column_id = name if column_id is None else column_id
-        self.dtype = dtype or self.dtype
         super().__init__(name, **kwargs)
 
 
@@ -110,28 +107,34 @@ class StringField(CSVField):
     """
     Field which converts values to String dtype
     """
-    dtype = 'object'
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,
+                         dtype=object, **kwargs)
 
 
-class IntegerField(CSVField):
+class IntegerField(IntegerFieldMixin, CSVField):
     """
     Field which converts values to Nullable Integer type
     """
-
-    def __init__(self, name, large=False, **kwargs):
-        """
-
-        :param name:
-        :param bool large: Whether integer may be very large (greater than 2,147,483,647) (use 64-bit)
-        :param kwargs:
-        """
-        super().__init__(name,
-                         dtype='Int64' if large else 'Int32',
-                         **kwargs)
+    pass
+    #
+    # def __init__(self, name, large=False, **kwargs):
+    #     """
+    #
+    #     :param name:
+    #     :param bool large: Whether integer may be very large (greater than 2,147,483,647) (use 64-bit)
+    #     :param kwargs:
+    #     """
+    #     super().__init__(name,
+    #                      dtype='Int64' if large else 'Int32',
+    #                      **kwargs)
 
 
 class TimestampField(TimestampFieldMixin, CSVField):
     """
     Field which converts values to Timestamp
     """
-    dtype = 'object'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,
+                         dtype=object, **kwargs)

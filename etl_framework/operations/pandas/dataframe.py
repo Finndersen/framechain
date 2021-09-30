@@ -3,6 +3,7 @@ Primary Pandas operations which take Dataframe and return Dataframe
 """
 import logging
 import pandas as pd
+from pandas.api.types import is_categorical_dtype
 
 from .base import DataframeOperation
 
@@ -261,3 +262,35 @@ class SelectColumns(DataframeOperation):
 
     def description(self):
         return "Select columns: {}".format(self.columns)
+
+
+class AlignCategories(DataframeOperation):
+    """
+    Align the categories of multiple Category type columns
+    This will then allow other operations to be performed on the columns (e.g. CombineFirst)
+    """
+    def __init__(self, *category_columns):
+        """
+
+        :param category_columns:
+        """
+        if len(category_columns) < 2:
+            raise ValueError('Must provide at least 2 column names')
+        super().__init__()
+        self.category_columns = category_columns
+
+    def action(self, dataframe):
+        all_categories = pd.Index([])
+        # Validate column type and build aggregate category list
+        for column_name in self.category_columns:
+            column = dataframe[column_name]
+            if not is_categorical_dtype(column):
+                raise TypeError('"{}" is not a categorical type column'.format(column_name))
+
+            all_categories = all_categories.union(column.cat.categories)
+
+        # Set new categories on all columns
+        for column_name in self.category_columns:
+            dataframe[column_name] = dataframe[column_name].cat.set_categories(all_categories)
+
+        return dataframe

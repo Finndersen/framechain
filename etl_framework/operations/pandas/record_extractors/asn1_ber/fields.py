@@ -1,9 +1,9 @@
-from etl_framework.operations.pandas import ColumnToDatetime, ColumnMap, BytesColumnToString, AsType, ToInteger
 from etl_framework.operations import profiled, BinaryDurationToInt
-from etl_framework.operations.transforms import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, BytesToDateString, BytesToTime, BytesToTimeString, \
-    BytesToHexString, TBCDBytesToString, BinaryIPv4AddressToString, BinaryIPv6AddressToString, BCDTimestampToString
+from etl_framework.operations.pandas import ColumnToDatetime, ColumnMap, ToNullableInteger
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
-from etl_framework.exceptions import ETLFieldError
+from etl_framework.operations.transforms import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, \
+    BytesToDateString, BytesToTime, BytesToTimeString, \
+    BytesToHexString, TBCDBytesToString, BinaryIPv4AddressToString, BinaryIPv6AddressToString, BCDTimestampToString
 from etl_framework.operations.transforms.telephony import ConvertAddressString
 
 
@@ -11,6 +11,7 @@ class ASN1BERField(InputField):
     """
     Class used to define a BER ASN1 field
     """
+
     def __init__(self, name, asn_ids, aggregator=None, **kwargs):
         """
 
@@ -64,21 +65,24 @@ class BooleanField(ASN1BERField):
     """
     ASN1 Boolean field
     """
-    value_converter = BytesToBoolean()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, value_converter=BytesToBoolean(), **kwargs)
 
 
 class IntegerField(IntegerFieldMixin, ASN1BERField):
     """
     Bytes to int64. Use for INTEGER ASN1 type
     """
-    value_converter = BytesToInteger()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, value_converter=BytesToInteger(), **kwargs)
 
 
 class EnumeratedField(IntegerField):
     """
     Field which translates an enumerated integer value to corresponding string value
     """
-    column_type = object
 
     def __init__(self, name, asn_id, mapping, **kwargs):
         """
@@ -87,22 +91,24 @@ class EnumeratedField(IntegerField):
         :param dict mapping: enumeration mapping (of integer values to string representation)
         :param kwargs:
         """
-        super().__init__(name, asn_id, column_converter=ColumnMap(mapping), **kwargs)
+        super().__init__(name, asn_id, column_converter=ColumnMap(mapping), dtype=object, **kwargs)
 
 
 class StringField(ASN1BERField):
     """
     String field which decodes byte data to string. Use for IA5String or OCTET STRING if appropriate
     """
-    # Doesnt appear to be much performance difference between using value or column converter
-    value_converter = BytesToString()
-    column_type = object
+
+    def __init__(self, *args, **kwargs):
+        # Doesnt appear to be much performance difference between using value or column converter
+        super().__init__(*args, value_converter=BytesToString(), dtype=object, **kwargs)
 
 
 class DateField(ASN1BERField):
     """
     From binary date in 3-byte format YYMMDD to datetime.date or string in YYYY-MM-DD format
     """
+
     def __init__(self, *args, to_string=False, **kwargs):
         """
 
@@ -121,6 +127,7 @@ class TimeField(ASN1BERField):
     """
     From binary time in format HHMMSS to datetime.date
     """
+
     def __init__(self, *args, to_string=False, **kwargs):
         if to_string:
             converter = BytesToTimeString()
@@ -133,8 +140,11 @@ class DurationField(ASN1BERField):
     """
     From binary time in HHMMSS to total duration in seconds
     """
-    value_converter = BinaryDurationToInt()
-    column_converter = ToInteger()
+
+    def __init__(self, *args, size=32, **kwargs):
+        super().__init__(*args,
+                         value_converter=BinaryDurationToInt(),
+                         column_converter=ToNullableInteger(size=size), **kwargs)
 
 
 class AddressStringField(ASN1BERField):
@@ -147,8 +157,11 @@ class AddressStringField(ASN1BERField):
 
     Address digits need to be nibble-swapped
     """
-    value_converter = ConvertAddressString()
-    column_type = object
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,
+                         value_converter=ConvertAddressString(),
+                         dtype=object, **kwargs)
 
 
 class OctetStringField(ASN1BERField):
@@ -156,7 +169,11 @@ class OctetStringField(ASN1BERField):
     Convert binary data to hex string representation.
     e.g. b'\x5d\xb1\x80' -> '5DB180'
     """
-    value_converter = BytesToHexString(uppercase=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,
+                         value_converter=BytesToHexString(uppercase=True),
+                         dtype=object, **kwargs)
 
 
 class BCDTimestampField(ASN1BERField):
@@ -165,25 +182,30 @@ class BCDTimestampField(ASN1BERField):
     Chain BCDTimestampToString and StringToDatetime converters
     If timestamp is invalid format, Null value will be returned (instead of raising error)
     """
-    value_converter = BCDTimestampToString()
-    column_converter = ColumnToDatetime(format='%y%m%d%H%M%S%z',
-                                        errors='coerce')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,
+                         value_converter=BCDTimestampToString(),
+                         column_converter=ColumnToDatetime(format='%y%m%d%H%M%S%z', errors='coerce'),
+                         dtype=object, **kwargs)
 
 
-class TBCDField(ASN1BERField):
+class TBCDStringField(ASN1BERField):
     """
-    For decoding Telephony Binary Coded Decimal fields e.g. MSISDN, IMEI, IMSI
+    For decoding Telephony Binary Coded Decimal fields to string e.g. MSISDN, IMEI, IMSI
     """
-    #column_converter = Apply(binary.TBCDParser())
-    value_converter = TBCDBytesToString()
-    column_type = object
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,
+                         value_converter=TBCDBytesToString(),
+                         dtype=object, **kwargs)
 
 
 class IPAddressField(ASN1BERField):
     """
     For decoding binary 4-byte IPv4 or 16-byte IPv6 address to string representation
     """
-    column_type = object
+
     def __init__(self, *args, version='ipv4', **kwargs):
         if version == 'ipv4':
             converter = BinaryIPv4AddressToString()
@@ -191,7 +213,8 @@ class IPAddressField(ASN1BERField):
             converter = BinaryIPv6AddressToString()
         else:
             raise ValueError('IPAddressField version must be "ipv4" or "ipv6"')
-        super().__init__(*args, value_converter=converter, **kwargs)
+        super().__init__(*args, value_converter=converter, dtype=object,
+                         **kwargs)
 
 
 def convert_address_string(bytes_data):
@@ -233,11 +256,6 @@ class MSISDNField(ASN1BERField):
     Currently only contains validation for ISDN/Telephony international number
     """
 
-    value_converter = TBCDBytesToString()[2:]
-
-    # def validate_raw_value(self, value):
-    #     # Ensure Extension Indication, Nature of Address and NPI is ISDN/Telephony international number
-    #     if value[0:1] != b'\x91':
-    #         raise ValidationError('Expected ISDN/Telephony International Number but got: {}'.format(value))
-
-
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,
+                         value_converter=TBCDBytesToString()[2:], **kwargs)

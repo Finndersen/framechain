@@ -38,30 +38,23 @@ class ToNumeric(ColumnOperation):
         return pd.to_numeric(column, downcast=self.downcast, errors=self.errors)
 
 
-class ToInteger(ColumnOperation):
+def ToNullableInteger(size=32):
     """
-    Convert column to Integer type
+    Create transform to convert column to nullable Integer type
     Normally if source data for 'integer' field contains null values, pandas will convert Series type to float
     (normal integer type cannot represent null values)
-    This converter changes dtype to new nullable integer type ('Int32'), if float conversion has occurred
-    Also performs automatic downcasting of non-null integer data to reduce memory
+    This converter changes dtype to new nullable integer type ('Int8-64'), if float conversion has occurred
+
+    :param int size: Integer size in bits
+    8: -128 to 127
+    16: -32,768 to 32,767
+    32: -2,147,483,648 to 2,147,483,647
+    64: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807
+    :param bool ignore_errors: If true, any non-numeric input values that fail to convert to Numeric will be set as NaN
     """
-    changes_type = True
+    valid_sizes = [8, 16, 32, 64]
 
-    def __init__(self, large=False, ignore_errors=False):
-        """
+    if size not in valid_sizes:
+        raise ValueError('Invalid integer bit size: {} Choose from: {}'.format(size, valid_sizes))
 
-        :param bool large: Whether to convert to 64 bit integer (True) or 32 bit (False)
-        :param bool ignore_errors: Whether to ignore casting errors
-        """
-        super().__init__()
-        int_type = 'Int64' if large else 'Int32'
-        self.converter = If(lambda s: is_numeric_dtype(s.dtype),
-                            # Float or other numeric to nullable int
-                            AsType(int_type, ignore_errors=ignore_errors),
-                            # First convert non-numeric to numeric
-                            (ToNumeric(errors='coerce' if ignore_errors else 'raise') >>
-                             AsType(int_type, ignore_errors=ignore_errors)))
-
-    def action(self, column):
-        return self.converter(column)
+    return ToNumeric() >> AsType('Int{}'.format(size))

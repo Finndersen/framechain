@@ -50,7 +50,7 @@ class ParitionedField(InputField):
     """
     Object to define details of partitioned field, such as start and end position in record line
     """
-    def __init__(self, name, start_pos, end_pos, column_converter=None):
+    def __init__(self, name, start_pos, end_pos, **kwargs):
         """
 
         :param str name: Field name
@@ -59,4 +59,4 @@ class ParitionedField(InputField):
         """
         self.start_pos = start_pos
         self.end_pos = end_pos
-        super().__init__(name, column_converter)
+        super().__init__(name, **kwargs)

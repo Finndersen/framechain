@@ -3,7 +3,6 @@ import logging
 import pandas as pd
 
 from etl_framework.exceptions import ETLConfigurationError, EndOfFileError
-# from etl_framework.record_extractors.files.asn1 import asn1_decoder_cython
 from etl_framework.operations.pandas.record_extractors.asn1_ber import ASN1BERDecoder, ASN1BERField
 from etl_framework.operations.pandas.record_extractors.base import BaseDataFrameGenerator
 

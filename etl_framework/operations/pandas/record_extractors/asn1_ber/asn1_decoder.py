@@ -39,6 +39,12 @@ class ASN1Node(object):
         # Calculate unique absolute ID of node (add 1 so it will always contribute something)
         self.id = (tag_number if parent is None else (parent.id<<8) + tag_number) + 1
 
+    def __repr__(self):
+        return 'ASN1Node #{} from {} to {} ({})'.format(self.tag_number,
+                                                        self.start_pos,
+                                                        self.end_pos if self.end_pos else '<Unknown>',
+                                                        'C' if self.constructed else 'P')
+
 
 class ASN1BERDecoder(object):
 

@@ -84,7 +84,14 @@ class OperationOperators(object):
 
     # CHAINING
     def __rshift__(self, other):
-        return ChainedOperations(self, other)
+        # If chained with None or Pass, ignore
+        if other is None or isinstance(other, Pass):
+            return self
+        # If self is Pass, adopt new operation
+        elif isinstance(self, Pass):
+            return convert_to_operation(other)
+        else:
+            return ChainedOperations(self, other)
 
     # INVERSION
     def __invert__(self):
@@ -812,6 +819,24 @@ def convert_to_operation(val, none_allowed=False, wrap_value=True):
         raise ValueError('Value is not callable: {}'.format(val))
 
 
+def chain_operations(*operations):
+    """
+    Convert a sequence of operations into a single chained operation.
+    Supports providing None values which will be skipped
+    :param operations:
+    :return:
+    """
+    chained_operation = None
+    for operation in operations:
+        if operation is not None:
+            if chained_operation is None:
+                chained_operation = operation
+            else:
+                chained_operation = chained_operation >> operation
+
+    return chained_operation
+
+
 def verify_profile_data(profile_data):
     """
     Verify PSTAT profile data dictionary
@@ -829,3 +854,19 @@ def verify_profile_data(profile_data):
                                                                                                         pprint.pformat(stat_data),
                                                                                                         stat_data[i],
                                                                                                         caller_data_sum))
+
+
+class Pass(Operation):
+    """
+    Acts as a special transparent operation, returns input value with no change, and is removed/ignored in some cases
+    Has a Falsey value (can be used to check if operation exists/does anything)
+    """
+
+    def __bool__(self):
+        return False
+
+    def action(self, value):
+        return value
+
+    def description(self):
+        return 'Pass'

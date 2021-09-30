@@ -147,13 +147,15 @@ class ColumnOfValue(Operation):
         'column': 'column',
     }
 
-    def __init__(self, value):
+    def __init__(self, value, dtype=None):
         """
 
         :param value: static value or callable which returns scalar value
+        :param dtype: set dtype of column
         """
         super().__init__()
         self.value = value
+        self.dtype = dtype
 
     def action(self, vector):
         """
@@ -162,10 +164,13 @@ class ColumnOfValue(Operation):
         :return:
         """
         repeated_value = self.value(vector) if callable(self.value) else self.value
-        return pd.Series([repeated_value] * len(vector.index), index=vector.index)
+        return pd.Series([repeated_value] * len(vector.index), index=vector.index, dtype=self.dtype)
 
     def description(self):
-        return 'Column with value: "{}"'.format(self.value)
+        desc = 'Column with value: "{}"'.format(self.value)
+        if self.dtype:
+            desc += ' and dtype: "{}"'.format(self.dtype)
+        return desc
 
 
 class FillNA(Operation):
