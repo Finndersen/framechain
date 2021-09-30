@@ -38,9 +38,9 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         self.header = header
         super().__init__(fields, **kwargs)
 
-    def create_dataframe(self, file_data):
+    def get_full_dataframe(self, file_data):
         """
-        Create dataframe from CSV data file.
+        Create dataframe from CSV data file. (Does not support record chunking)
         Input can be file reader object (most efficient), or string or bytes data
         :param file_data:
         :return:
@@ -55,13 +55,14 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         elif not hasattr(file_data, 'read'):
             raise ValueError('Input file data should be str, bytes or reader object, not {}'.format(type(file_data)))
 
+        extract_fields = [field for field in self.fields if field.extract]
 
         # Get mapping of field header names or column IDs to dtype definitions
         dtypes = {field.column_id: field.dtype
-                  for field in self.fields if field.dtype}
+                  for field in extract_fields if field.dtype}
         # Get mapping of field header names or column IDs to converter definitions
         converters = {field.column_id: field.convert_value
-                      for field in self.fields if field.value_converter}
+                      for field in extract_fields if field.value_converter}
 
         dataframe = pd.read_csv(file_data,
                                 sep=self.delimiter,
@@ -74,11 +75,11 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         # Select required columns from dataframe. Do this here instead of using 'usecols' in pd.read_csv() because
         # it disables functionality of error_bad_lines=False or on_bad_lines='skip'
         # If file has headers, use_columns is list of field names (str), otherwise list of field positions (int)
-        dataframe = dataframe[[field.column_id for field in self.fields]]
+        dataframe = dataframe[[field.column_id for field in extract_fields]]
 
         # Rename columns to actual field names
         renames = {field.column_id: field.name
-                   for field in self.fields
+                   for field in extract_fields
                    if field.column_id != field.name}
         dataframe.rename(columns=renames, inplace=True)
         # Add record number column

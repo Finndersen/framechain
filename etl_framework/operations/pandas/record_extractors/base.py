@@ -1,14 +1,14 @@
 import logging
 
 import numpy as np
-from etl_framework.operations.pandas import ConvertColumn
+import pandas as pd
 from pandas import CategoricalDtype
 
 from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
 from etl_framework.operations import BaseOperation, Operation, profiled, chain_operations
 from etl_framework.operations.pandas.transforms import ToNullableInteger, SetColumnTimezone, ColumnToDatetime, AsType, \
     ToNumeric
-from etl_framework.utils import LogDuration
+from etl_framework.utils import LogDuration, chunks
 
 log = logging.getLogger(__name__)
 
@@ -23,19 +23,24 @@ class BaseDataFrameGenerator(Operation):
     Requires sequence of BaseField subclasses which correspond to columns in DataFrame and contain conversion logic
     """
 
-    def __init__(self, fields, record_type_field_name='_record_type', record_number_field_name='_record_number'):
+    def __init__(self, fields, record_number_field_name='_record_number'):
         """
-        :param fields: list/tuple of InputField subclasses defining fields to be extracted from input
-        and turned into DataFrame columns
-        :param str record_type_field_name: Name of field to store record type name in
-        :param str record_number_field_name: Name of field to store record number in
+        :param list/tuple of InputFields fields: List of Field instances to define extraction and conversion logic
+        :param str record_number_field_name: Name of field to store record number in. Should represent original record
+        number in source, not necessarily record number in output DF
         """
         super().__init__()
-        self.RECORDTYPE_FIELD_NAME = record_type_field_name
+
         self.RECORDNUMBER_FIELD_NAME = record_number_field_name
+        # Add field for Record Number (which only does post-processing and not extraction)
+        record_number_field = NonExtractedField(record_number_field_name,
+                                                column_converter=ToNumeric(downcast='unsigned'))
+
+        self.fields = [self.wrap_operation(field) for field in list(fields) + [record_number_field]]
+
         # Validate field names are unique
         field_names = set()
-        for field in fields:
+        for field in self.fields:
             if not isinstance(field, InputField):
                 raise TypeError('Fields should be subclasses of InputField')
 
@@ -43,12 +48,6 @@ class BaseDataFrameGenerator(Operation):
                 raise ETLConfigurationError(
                     'Input field: "{}" has already been defined for {}'.format(field.name, type(self).__name__))
             field_names.add(field.name)
-        self.fields = [self.wrap_operation(field) for field in fields]
-
-        # Construct transforms to Convert Record Type column to categorical and Record Number to appropriate integer type
-        self.internal_conversions = self.wrap_operation(
-            ConvertColumn(self.RECORDTYPE_FIELD_NAME, AsType('category')) >>
-            ConvertColumn(self.RECORDNUMBER_FIELD_NAME, ToNumeric(downcast='unsigned')))
 
     def action(self, input_data):
         """
@@ -58,31 +57,26 @@ class BaseDataFrameGenerator(Operation):
         """
         with LogDuration(log,
                          'Extracting records from input...'):  # TODO: Remove logging and add dedicated operation for logging
-            dataframe = self.create_dataframe(input_data)
-
-        #  Add any missing fields as Null column
-        for field_name in ([self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +
-                           [field.name for field in self.fields if field.add_if_missing]):
-            if field_name not in dataframe.columns:
-                dataframe[field_name] = np.nan
-
-        # Convert Record Type column to categorical and Record Number to appropriate integer type
-        dataframe = self.run_wrapped_operation(self.internal_conversions, dataframe)
-
-        # Order fields
-        dataframe = self.order_fields(dataframe)
+            dataframe = self.get_full_dataframe(input_data)
 
         # Perform field vector conversions
         with LogDuration(log, 'Performing vector field conversions...'):
             for field in self.fields:
-                if field.name in dataframe.columns:
-                    dataframe[field.name] = field.convert_column(dataframe[field.name])
+                if field.post_process:
+                    if field.name in dataframe.columns:
+                        dataframe[field.name] = field.convert_column(dataframe[field.name])
+                    else:
+                        #  Add any missing fields as Null column
+                        dataframe[field.name] = np.nan
+
+        # Order fields
+        dataframe = self.order_fields(dataframe)
 
         return dataframe
 
-    def create_dataframe(self, input_data):
+    def get_full_dataframe(self, input_data):
         """
-        Method used to generate dataframe containing raw field values
+        Build full dataframe of records
         :param input_data:
         :return: pd.DataFrame
         """
@@ -94,8 +88,7 @@ class BaseDataFrameGenerator(Operation):
         :param dataframe:
         :return:
         """
-        return dataframe[[self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +
-                         [field.name for field in self.fields]]
+        return dataframe[[field.name for field in self.fields if field.post_process]]
 
     def get_execute_time(self):
         """
@@ -122,6 +115,67 @@ class BaseDataFrameGenerator(Operation):
             return super().get_wrapped_operation_stats(wrapped_operation)
 
 
+class IterableRecordsDataframeGenerator(BaseDataFrameGenerator):
+    """
+    Dataframe generator which is able to extract records from source in a streamed fashion (record by record, not all
+    at once)
+    Allows option of applying record processor to each record and building dataframe in chunks for memory optimisation
+    Any new field added by record processor should have a corresponding NonExtractedField definition
+    Any field removed by record processor should have post_process=False
+    """
+
+    def __init__(self, fields, record_processor=None, record_type_field_name='_record_type', chunk_size=None, **kwargs):
+        """
+
+        :param list, tuple fields:
+        :param record_processor: Optional callable used to process each record before being provided to DataFrame initialisation
+        :param str record_type_field_name: Name to give record type of each record
+        :param int chunk_size: Length of record chunks to construct dataframe from (can save memory usage)
+        :param kwargs:
+        """
+        # Add field for Record Type (which only does post-processing and not extraction)
+        record_type_field = NonExtractedField(record_type_field_name, column_converter=AsType('category'))
+
+        super().__init__(list(fields) + [record_type_field], **kwargs)
+        self.chunk_size = chunk_size
+        self.RECORDTYPE_FIELD_NAME = record_type_field_name
+        self.record_processor = self.wrap_operation(record_processor, none_allowed=True)
+
+    def get_full_dataframe(self, input_data):
+        """
+        Build full dataframe of records, by concatenating sub-dataframes of chunks of records
+        :param input_data:
+        :return: pd.DataFrame
+        """
+        # Get iterable of record chunks
+        if self.record_processor:
+            records = (self.run_wrapped_operation(self.record_processor, record)
+                       for record in self.get_records(input_data))
+        else:
+            records = self.get_records(input_data)
+
+        # Build list of sub-dataframes and Join together into one dataframe
+        return pd.concat([self.create_dataframe(records_chunk)
+                          for records_chunk in chunks(records, self.chunk_size)])
+
+    def get_records(self, input_data):
+        """
+        Return sequence of records from input data (can be dicts, tuples, lists, etc)
+        Should ideally yield records to act as an generator for memory efficiency
+        :param input_data:
+        :return:
+        """
+        raise NotImplementedError()
+
+    def create_dataframe(self, records):
+        """
+        Construct a dataframe from a chunk of records
+        :param records:
+        :return:
+        """
+        return pd.DataFrame(records)
+
+
 class InputField(BaseOperation):
     """
     Class for defining a field in a source data record which will correspond to a DataFrame column
@@ -132,9 +186,10 @@ class InputField(BaseOperation):
 
     # Values which will be treated as Null
     EMPTY_VALUES = {''}
+    extract = True
 
     def __init__(self, name, mandatory=False, column_converter=None, value_converter=None, ignore_condition=None,
-                 dtype=None, add_if_missing=True, categorical=False, extract=True, post_process=True):
+                 dtype=None, categorical=False, post_process=True):
         """
 
         :param str name: Name of field
@@ -145,9 +200,7 @@ class InputField(BaseOperation):
         :param callable ignore_condition: Callable which takes raw value and if returns True, result will be None and
         value conversion is skipped
         :param dtype: Data type to cast column to. Useful for if column has no values to set type appropriately
-        :param bool add_if_missing: Whether to create an empty column for this field if there are no values
         :param bool categorical: Whether field column should be converted to Category type (for memory efficiency)
-        :param bool extract: Whether this field definition is used for extracting field values from source
         :param bool post_process: Whether to perform the column post-processing operations for this field
         operations for this field
         """
@@ -162,9 +215,7 @@ class InputField(BaseOperation):
         self.value_converter = self.wrap_operation(value_converter, none_allowed=True)
         self.ignore_condition = self.wrap_operation(ignore_condition, none_allowed=True)
         self.dtype = dtype
-        self.add_if_missing = add_if_missing
         self.categorical = categorical
-        self.extract = extract
         self.post_process = post_process
 
     def action(self, value):
@@ -218,6 +269,19 @@ class InputField(BaseOperation):
 
     def description(self):
         return '{}: "{}"'.format(type(self).__name__, self.name)
+
+
+class NonExtractedField(InputField):
+    """
+    Special field class to represent field which is not extracted from source data but generated/added some other way
+    e.g. by Dataframe generator or record processor. Has no value conversion logic
+    """
+    extract = False
+
+    def __init__(self, name, **kwargs):
+        if 'value_converted' in kwargs:
+            raise ValueError('Cannot provide value converter to {}'.format(type(self).__name__))
+        super().__init__(name, **kwargs)
 
 
 class IntegerFieldMixin(object):

@@ -3,11 +3,11 @@ import csv
 import pandas as pd
 
 from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, \
-    TimestampFieldMixin, IntegerFieldMixin
+    TimestampFieldMixin, IntegerFieldMixin, IterableRecordsDataframeGenerator
 from etl_framework.operations import profiled
 
 
-class AdvancedDelimitedRecordExtractor(BaseDataFrameGenerator):
+class AdvancedDelimitedRecordExtractor(IterableRecordsDataframeGenerator):
     """
     Alternative custom implementation of delimited (CSV) record extractor, to support case of files with different
     record types which may have different field specifications. Allows specifying the column index of a field on a per
@@ -29,14 +29,24 @@ class AdvancedDelimitedRecordExtractor(BaseDataFrameGenerator):
         self.recordtype_detector = self.wrap_operation(recordtype_detector, none_allowed=True)
         self.csv_reader_kwargs = csv_reader_kwargs or {}
 
-    def create_dataframe(self, file_reader):
+    def create_dataframe(self, records):
         """
 
-        :param file_reader: Text file reader of CSV file
+        :param records: extracted records (iterable of lists)
         :return:
         """
-        output_records = []
+        return pd.DataFrame(data=records,
+                            columns=[field.name for field in self.fields],
+                            dtype='object')
+
+    def get_records(self, file_reader):
+        """
+        Extract records from file
+        :param file_reader:
+        :return:
+        """
         csv_reader = csv.reader(file_reader, **self.csv_reader_kwargs)
+
         for record_number, raw_row in enumerate(csv_reader, start=1):
             if self.recordtype_detector:
                 recordtype = self.run_wrapped_operation(self.recordtype_detector, raw_row)
@@ -46,13 +56,9 @@ class AdvancedDelimitedRecordExtractor(BaseDataFrameGenerator):
             else:
                 recordtype = None
 
-            record = [recordtype, record_number] + [field.get_value(raw_row, recordtype) for field in self.fields]
-            output_records.append(record)
-
-        return pd.DataFrame(data=output_records,
-                            columns=[self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +
-                                    [field.name for field in self.fields],
-                            dtype='object')
+            record = [field.get_value(raw_row, recordtype)
+                      for field in self.fields if field.extract] + [recordtype, record_number]
+            yield record
 
 
 class AdvancedCSVField(InputField):

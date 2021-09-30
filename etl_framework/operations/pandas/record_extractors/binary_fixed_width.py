@@ -1,18 +1,16 @@
-import pandas as pd
 from etl_framework.operations import BytesToString, profiled
-
-from .base import BaseDataFrameGenerator, InputField
-from etl_framework.operations.transforms import BytesToHexString, BytesToInteger
 from etl_framework.operations.pandas import ToNullableInteger
+from etl_framework.operations.transforms import BytesToHexString, BytesToInteger
+from .base import InputField, IterableRecordsDataframeGenerator
 
 
-class BinaryFixedWidthRecordExtractor(BaseDataFrameGenerator):
+class BinaryFixedWidthRecordExtractor(IterableRecordsDataframeGenerator):
     """
     Extract records from binary data file with fields defined by byte position and offset, from records with fixed length
     Can provide recordtype_detector which takes raw record data and returns record type, or None if record should be skipped
     """
 
-    def __init__(self, fields, record_length, recordtype_detector=None, record_processor=None, **kwargs):
+    def __init__(self, fields, record_length, recordtype_detector=None, **kwargs):
         """
         :param list fields: List of BFWFields
         :param int record_length: Length of full record line
@@ -23,10 +21,8 @@ class BinaryFixedWidthRecordExtractor(BaseDataFrameGenerator):
         super().__init__(fields, **kwargs)
         self.record_length = record_length
         self.recordtype_detector = self.wrap_operation(recordtype_detector, none_allowed=True)
-        self.record_processor = self.wrap_operation(record_processor, none_allowed=True)
 
-    def create_dataframe(self, data_file):
-        records = []
+    def get_records(self, data_file):
         # Loop through lines in file
         record_number = 0
         while True:
@@ -45,33 +41,30 @@ class BinaryFixedWidthRecordExtractor(BaseDataFrameGenerator):
                 record_type = None
 
             # Build record dictionary
-            record_dict = {self.RECORDTYPE_FIELD_NAME: record_type, self.RECORDNUMBER_FIELD_NAME: record_number}
+            record_dict = {self.RECORDTYPE_FIELD_NAME: record_type,
+                           self.RECORDNUMBER_FIELD_NAME: record_number}
             for field in self.fields:
-                field.add_to_record(record_type, record_data, record_dict)
+                if field.extract:
+                    field.add_to_record(record_type, record_data, record_dict)
 
-            # Apply record procsesing
-            if self.record_processor:
-                record_dict = self.run_wrapped_operation(self.record_processor, record_dict)
-            # Add record to list
-            records.append(record_dict)
-        # Build DataFrame from records and headers
-        return pd.DataFrame(records)
+            yield record_dict
 
-    def order_fields(self, dataframe):
-        # Create ordered list of columns
-        # Record type and number + defined fields
-        expected_columns = ([self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +
-                            [field.name for field in self.fields if field.name in dataframe.columns])
-        # Any other fields added (perhaps by record processor)
-        extra_colums = [column for column in dataframe.columns if column not in expected_columns]
-        dataframe = dataframe[expected_columns + extra_colums]
-        return dataframe
+    # def order_fields(self, dataframe):
+    #     # Create ordered list of columns
+    #     # Record type and number + defined fields
+    #     expected_columns = ([self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +
+    #                         [field.name for field in self.fields if field.name in dataframe.columns])
+    #     # Any other fields added (perhaps by record processor)
+    #     extra_colums = [column for column in dataframe.columns if column not in expected_columns]
+    #     dataframe = dataframe[expected_columns + extra_colums]
+    #     return dataframe
 
 
 class BFWField(InputField):
     """
     Base InputField class for Binary Fixed Width fields
     """
+
     def __init__(self, name, start_pos, length, blank_values=(b'\xff',), **kwargs):
         """
 
@@ -121,6 +114,7 @@ class HexField(BFWField):
     """
     Field class which converts values to hex representation
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, value_converter=BytesToHexString(), **kwargs)
 
@@ -129,6 +123,7 @@ class StringField(BFWField):
     """
     Field class which decodes byte content to string
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, value_converter=BytesToString(), **kwargs)
 
@@ -137,6 +132,7 @@ class IntegerField(BFWField):
     """
     Field which converts byte values to integer
     """
+
     def __init__(self, *args, bytes_reversed=False, size=32, **kwargs):
         """
         Add value converter to convert bytes to integer, and column converter to nullable integer to handle cases when

@@ -1,4 +1,5 @@
 import functools
+import itertools
 import logging
 import random
 import string
@@ -170,6 +171,11 @@ def chunks(iterator, n):
     :param int n: Chunk size (or None to skip chunking)
     :return:
     """
-    for first in iterator: # take one item out (exits loop if `iterator` is empty)
-        rest_of_chunk = itertools.islice(iterator, 0, n - 1)
-        yield itertools.chain([first], rest_of_chunk)  # concatenate the first item back
+    # return single chunk if None
+    if n is None:
+        for chunk in [iterator]:
+            yield chunk
+    else:
+        for first in iterator:  # take one item out (exits loop if `iterator` is empty)
+            rest_of_chunk = itertools.islice(iterator, 0, n - 1)
+            yield itertools.chain([first], rest_of_chunk)  # concatenate the first item back
