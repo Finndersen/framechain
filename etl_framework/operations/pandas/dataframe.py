@@ -5,6 +5,7 @@ import logging
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 
+from . import Field
 from .base import DataframeOperation
 
 log = logging.getLogger(__name__)
@@ -227,21 +228,36 @@ class CombineFirst(DataframeOperation):
     Combine values of two Series using first non-NaN value
     """
 
-    def __init__(self, first_column, second_column):
+    def __init__(self, first_operation, second_operation):
         """
 
-        :param str first_column: First field to combine
-        :param str second_column: Second field to combine
+        :param Operation, str first_operation: Operation which takes DF as input and produces first field to combine
+        Can provide as column name string and will use Field() operation by default
+        :param Operation, str second_operation: Operation which takes DF as input and produces second field to combine
+        Can provide as column name string and will use Field() operation by default
         """
         super().__init__()
-        self.first_column = first_column
-        self.second_column = second_column
+        self.first_operation = self.add_child_operation(Field(first_operation)
+                                                        if isinstance(first_operation, str)
+                                                        else first_operation)
+        self.second_operation = self.add_child_operation(Field(second_operation)
+                                                         if isinstance(second_operation, str)
+                                                         else second_operation)
 
     def action(self, dataframe):
-        return dataframe[self.first_column].combine_first(dataframe[self.second_column])
+        first_column = self.run_child_operation(self.first_operation, dataframe)
+        second_column = self.run_child_operation(self.second_operation, dataframe)
+
+        if not isinstance(first_column, pd.Series):
+            raise ValueError('Operation must return Series, not: {}'.format(type(first_column)))
+
+        if not isinstance(second_column, pd.Series):
+            raise ValueError('Operation must return Series, not: {}'.format(type(second_column)))
+
+        return first_column.combine_first(second_column)
 
     def description(self):
-        return 'Combine "{}" and "{}" using first non-NaN value'.format(self.first_column, self.second_column)
+        return 'Combine "{}" and "{}" using first non-NaN value'.format(self.first_operation, self.second_operation)
 
 
 class SelectColumns(DataframeOperation):

@@ -5,7 +5,7 @@ import pandas as pd
 from pandas import CategoricalDtype
 
 from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
-from etl_framework.operations import BaseOperation, Operation, profiled, chain_operations
+from etl_framework.operations import BaseOperation, Operation, profiled, chain_operations, Pass
 from etl_framework.operations.pandas.transforms import ToNullableInteger, SetColumnTimezone, ColumnToDatetime, AsType, \
     ToNumeric
 from etl_framework.operations.pandas.utils import concat_dataframes
@@ -226,10 +226,11 @@ class InputField(BaseOperation):
         self.name = name
         self.mandatory = mandatory
         self.column_converter = self.add_child_operation(
-            chain_operations(column_converter,
-                             AsType(dtype, copy=False) if dtype else None,
-                             AsType(CategoricalDtype(ordered=True), copy=False) if categorical else None),
-            none_allowed=True)
+            Pass() >>
+            (AsType(dtype, copy=False) if dtype else None) >>
+            column_converter >>
+            (AsType(CategoricalDtype(ordered=True), copy=False) if categorical else None)
+        )
         self.value_converter = self.add_child_operation(value_converter, none_allowed=True)
         self.ignore_condition = self.add_child_operation(ignore_condition, none_allowed=True)
         self.dtype = dtype

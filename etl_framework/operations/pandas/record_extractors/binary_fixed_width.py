@@ -144,4 +144,5 @@ class IntegerField(BFWField):
         """
         super().__init__(*args,
                          value_converter=BytesToInteger(byteorder='little' if bytes_reversed else 'big'),
-                         column_converter=ToNullableInteger(size=size), **kwargs)
+                         column_converter=ToNullableInteger(size=size),
+                         **kwargs)

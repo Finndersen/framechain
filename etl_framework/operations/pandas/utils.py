@@ -64,7 +64,7 @@ def optimise_series(series):
                 series = downcast_series
                 mem_usage = downcast_mem
 
-        except ValueError:
+        except (ValueError, TypeError):
             # Unable to parse Series as numeric
             pass
 

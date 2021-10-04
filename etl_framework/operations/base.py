@@ -30,7 +30,7 @@ class OperationError(Exception):
         self.location.append(operation)
 
     def __str__(self):
-        return 'Exception occurred during operation:\n {}\n{}: {}'.format('\n'.join(str(operation) + ':' for operation
+        return 'Exception occurred during operation:\n{}\n{}: {}'.format('\n'.join(operation.description() + ':' for operation
                                                                                     in reversed(self.location)),
                                                                           type(self.wrapped_exception).__name__,
                                                                           str(self.wrapped_exception))
