@@ -10,6 +10,7 @@ class ASCIIPartitionedRecordExtractor(BaseDataFrameGenerator):
     """
     Extract records from data file content with fields seperated by position
     Input data needs to be ASCII text with newline character line seperators
+    TODO: NEEDS REWORKING
     """
     def __init__(self, fields, header_lines=0, record_skip_check=None):
         """

@@ -20,7 +20,7 @@ class BinaryFixedWidthRecordExtractor(IterableRecordsDataframeGenerator):
         """
         super().__init__(fields, **kwargs)
         self.record_length = record_length
-        self.recordtype_detector = self.wrap_operation(recordtype_detector, none_allowed=True)
+        self.recordtype_detector = self.add_child_operation(recordtype_detector, none_allowed=True)
 
     def get_records(self, data_file):
         # Loop through lines in file
@@ -33,7 +33,7 @@ class BinaryFixedWidthRecordExtractor(IterableRecordsDataframeGenerator):
                 break
 
             if self.recordtype_detector:
-                record_type = self.run_wrapped_operation(self.recordtype_detector, record_data)
+                record_type = self.run_child_operation(self.recordtype_detector, record_data)
                 # Skip record
                 if record_type is None:
                     continue

@@ -27,15 +27,15 @@ class If(Operation):
         :param false_operation: Operation to execute if condition returns False (defaults to no action)
         """
         super().__init__()
-        self.false_operation = self.wrap_operation(false_operation or Pass())
-        self.true_operation = self.wrap_operation(true_operation)
-        self.condition = self.wrap_operation(condition)
+        self.false_operation = self.add_child_operation(false_operation or Pass())
+        self.true_operation = self.add_child_operation(true_operation)
+        self.condition = self.add_child_operation(condition)
 
     def action(self, value):
-        if self.run_wrapped_operation(self.condition, value):
-            return self.run_wrapped_operation(self.true_operation, value)
+        if self.run_child_operation(self.condition, value):
+            return self.run_child_operation(self.true_operation, value)
         else:
-            return self.run_wrapped_operation(self.false_operation, value)
+            return self.run_child_operation(self.false_operation, value)
 
     def description(self):
         return 'If {}, \nThen: ({}), \nElse: ({})'.format(str(self.condition), self.true_operation,
@@ -76,16 +76,16 @@ class SwitchCase(Operation):
         :param default: Default operation to run if value is not matched
         """
         super().__init__()
-        self.default = self.wrap_operation(default or Pass())
-        self.case_mapping = {key: self.wrap_operation(operation) for key, operation in case_mapping.items()}
-        self.key_operation = self.wrap_operation(key_operation, wrap_value=False)
+        self.default = self.add_child_operation(default or Pass())
+        self.case_mapping = {key: self.add_child_operation(operation) for key, operation in case_mapping.items()}
+        self.key_operation = self.add_child_operation(key_operation, wrap_value=False)
 
     def action(self, value):
-        case_value = self.run_wrapped_operation(self.key_operation, value)
+        case_value = self.run_child_operation(self.key_operation, value)
         if case_value in self.case_mapping:
-            return self.run_wrapped_operation(self.case_mapping[case_value], value)
+            return self.run_child_operation(self.case_mapping[case_value], value)
         else:
-            return self.run_wrapped_operation(self.default, value)
+            return self.run_child_operation(self.default, value)
 
     def short_description(self):
         return 'Switch on value of: \n"{}"'.format(self.key_operation)
@@ -127,7 +127,7 @@ class Fork(Operation):
         super().__init__()
         if len(fork_operations) < 2:
             self.error(ValueError, 'Provide at least 2 operations to Fork')
-        self.fork_operations = [self.wrap_operation(operation) for operation in fork_operations]
+        self.fork_operations = [self.add_child_operation(operation) for operation in fork_operations]
 
     def action(self, input_val):
         """
@@ -139,7 +139,7 @@ class Fork(Operation):
 
         # Execute chain of operations
         for i, operation in enumerate(self.fork_operations):
-            value = self.run_wrapped_operation(operation, copy.deepcopy(input_val))
+            value = self.run_child_operation(operation, copy.deepcopy(input_val))
             outputs.append(value)
         return outputs
 
@@ -208,8 +208,8 @@ class Iterate(Operation):
         :param operation: Operation to run on each iterator item
         """
         super().__init__()
-        self.operation = self.wrap_operation(operation)
+        self.operation = self.add_child_operation(operation)
 
     def action(self, iterable):
         for item in iterable:
-            yield self.run_wrapped_operation(self.operation, item)
+            yield self.run_child_operation(self.operation, item)

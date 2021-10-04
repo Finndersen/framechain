@@ -47,10 +47,10 @@ class ConvertAddressString(Operation):
     """
     def __init__(self):
         super().__init__()
-        self.tbcd_converter = self.wrap_operation(TBCDBytesToString())
+        self.tbcd_converter = self.add_child_operation(TBCDBytesToString())
 
     def action(self, binary_value):
-        return binary_value[0:1].hex() + self.run_wrapped_operation(self.tbcd_converter, binary_value[1:])
+        return binary_value[0:1].hex() + self.run_child_operation(self.tbcd_converter, binary_value[1:])
 
 
 class BinaryIPv4AddressToString(Operation):

@@ -49,12 +49,12 @@ class FilterFileLines(Operation):
         :param condition: Callable which takes line string and returns True if it should be kept
         """
         super().__init__()
-        self.condition = self.wrap_operation(condition)
+        self.condition = self.add_child_operation(condition)
 
     def action(self, file_reader):
         output = io.StringIO()
         for line in file_reader:
-            if self.run_wrapped_operation(self.condition, line):
+            if self.run_child_operation(self.condition, line):
                 output.write(line)
         output.seek(0)
         return output

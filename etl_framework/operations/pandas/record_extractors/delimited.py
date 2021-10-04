@@ -38,7 +38,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         self.header = header
         super().__init__(fields, **kwargs)
 
-    def get_full_dataframe(self, file_data):
+    def create_dataframe(self, file_data):
         """
         Create dataframe from CSV data file. (Does not support record chunking)
         Input can be file reader object (most efficient), or string or bytes data

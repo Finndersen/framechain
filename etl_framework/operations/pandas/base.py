@@ -45,8 +45,8 @@ class ConditionallyAppliedOperation(Operation):
         which rows 'operation' will be applied to (optional)
         """
         super().__init__()
-        self.operation = self.wrap_operation(operation)
-        self.condition = self.wrap_operation(condition, none_allowed=True)
+        self.operation = self.add_child_operation(operation)
+        self.condition = self.add_child_operation(condition, none_allowed=True)
 
     def get_mask(self, df_or_series):
         """
@@ -55,7 +55,7 @@ class ConditionallyAppliedOperation(Operation):
         :return:
         """
         # Generate transform mask with condition if appropriate
-        mask = self.run_wrapped_operation(self.condition, df_or_series) if self.condition else None
+        mask = self.run_child_operation(self.condition, df_or_series) if self.condition else None
         if mask is not None:
             if not pd.api.types.is_bool_dtype(mask):
                 self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))

@@ -179,3 +179,4 @@ def chunks(iterator, n):
         for first in iterator:  # take one item out (exits loop if `iterator` is empty)
             rest_of_chunk = itertools.islice(iterator, 0, n - 1)
             yield itertools.chain([first], rest_of_chunk)  # concatenate the first item back
+

@@ -23,11 +23,11 @@ class DropRows(DataframeOperation):
         :param callable condition: Condition to filter row on. Takes DF and returns boolean mask
         """
         super().__init__()
-        self.condition = self.wrap_operation(condition, wrap_value=False)
+        self.condition = self.add_child_operation(condition, wrap_value=False)
 
     def action(self, dataframe):
         # Get masked/filtered DF
-        drop_mask = self.run_wrapped_operation(self.condition, dataframe)
+        drop_mask = self.run_child_operation(self.condition, dataframe)
         if not pd.api.types.is_bool_dtype(drop_mask):
             self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
 
@@ -285,7 +285,8 @@ class AlignCategories(DataframeOperation):
         for column_name in self.category_columns:
             column = dataframe[column_name]
             if not is_categorical_dtype(column):
-                raise TypeError('"{}" is not a categorical type column'.format(column_name))
+                raise TypeError('"{}" is not a categorical type column ({})'.format(column_name,
+                                                                                    column.dtype))
 
             all_categories = all_categories.union(column.cat.categories)
 

@@ -26,18 +26,18 @@ class AdvancedDelimitedRecordExtractor(IterableRecordsDataframeGenerator):
         """
 
         super().__init__(fields, **kwargs)
-        self.recordtype_detector = self.wrap_operation(recordtype_detector, none_allowed=True)
+        self.recordtype_detector = self.add_child_operation(recordtype_detector, none_allowed=True)
         self.csv_reader_kwargs = csv_reader_kwargs or {}
 
-    def create_dataframe(self, records):
-        """
-
-        :param records: extracted records (iterable of lists)
-        :return:
-        """
-        return pd.DataFrame(data=records,
-                            columns=[field.name for field in self.fields],
-                            dtype='object')
+    # def create_dataframe(self, records):
+    #     """
+    #
+    #     :param records: extracted records (iterable of lists)
+    #     :return:
+    #     """
+    #     return pd.DataFrame(data=records,
+    #                         columns=[field.name for field in self.fields],
+    #                         dtype='object')
 
     def get_records(self, file_reader):
         """
@@ -49,7 +49,7 @@ class AdvancedDelimitedRecordExtractor(IterableRecordsDataframeGenerator):
 
         for record_number, raw_row in enumerate(csv_reader, start=1):
             if self.recordtype_detector:
-                recordtype = self.run_wrapped_operation(self.recordtype_detector, raw_row)
+                recordtype = self.run_child_operation(self.recordtype_detector, raw_row)
                 # Skip record if no record type
                 if recordtype is None:
                     continue

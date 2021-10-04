@@ -1,5 +1,7 @@
 import pandas as pd
-from pandas.api.types import is_object_dtype, is_string_dtype, is_categorical_dtype, is_datetime64_any_dtype
+from pandas.api.types import is_object_dtype, is_string_dtype, is_categorical_dtype, is_datetime64_any_dtype, union_categoricals
+from operator import and_
+from functools import reduce
 
 
 def optimise_dataframe(dataframe):
@@ -89,6 +91,41 @@ def optimise_series(series):
         series = category_series
 
     return series, optimisations
+
+
+def union_indexes(indexes):
+    """
+    Union a collection of indexes
+    :param indexes:
+    :return:
+    """
+    merged_index = pd.Index([])
+    for index in indexes:
+        merged_index = merged_index.union(index)
+
+    return merged_index
+
+
+def concat_dataframes(dataframes):
+    """
+    Concatenate a list of dataframes, aligning categorical column categories first to preserve dtype
+    :param dataframes:
+    :return:
+    """
+    # Shortcut for single DF
+    if len(dataframes) == 1:
+        return dataframes[0]
+
+    # Align categories for common categorical columns
+    common_columns = reduce(and_, (set(df.columns) for df in dataframes))
+    for column_name in common_columns:
+        if is_categorical_dtype(dataframes[0][column_name]):
+            all_categories = union_indexes(df[column_name].cat.categories for df in dataframes)
+            # Set new categories on column
+            for df in dataframes:
+                df[column_name] = df[column_name].cat.set_categories(all_categories)
+
+    return pd.concat(dataframes)
 
 
 

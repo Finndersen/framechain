@@ -16,7 +16,7 @@ class Cached(Operation):
 
     def __init__(self, operation):
         super().__init__()
-        self.operation = Memoized(self.wrap_operation(operation, wrap_value=False))
+        self.operation = Memoized(self.add_child_operation(operation, wrap_value=False))
 
     def action(self, *args, **kwargs):
         """
@@ -25,7 +25,7 @@ class Cached(Operation):
         :param kwargs: extra transformation arguments potentially supplied from WithArgs or MapFields
         :return:
         """
-        return self.run_wrapped_operation(self.operation, *args, **kwargs)
+        return self.run_child_operation(self.operation, *args, **kwargs)
 
     def description(self):
         return '({}) with caching'.format(self.operation)
@@ -51,8 +51,8 @@ class MapArguments(Operation):
         and return desired value
         """
         super().__init__()
-        self.arg_mapping = {arg_name: self.wrap_operation(op) for arg_name, op in arg_mapping.items()}
-        self.operation = self.wrap_operation(operation)
+        self.arg_mapping = {arg_name: self.add_child_operation(op) for arg_name, op in arg_mapping.items()}
+        self.operation = self.add_child_operation(operation)
 
     def action(self, *args, **kwargs):
         """
@@ -60,8 +60,8 @@ class MapArguments(Operation):
         :param input_val: Value which will be passed to arg_mappings to generate input arguments for operation
         :return:
         """
-        return self.run_wrapped_operation(self.operation, **{arg_name: arg_operation(*args, **kwargs)
-                                                             for arg_name, arg_operation in self.arg_mapping.items()})
+        return self.run_child_operation(self.operation, **{arg_name: arg_operation(*args, **kwargs)
+                                                           for arg_name, arg_operation in self.arg_mapping.items()})
 
     def description(self):
         return '({}) with arguments: {}'.format(self.operation,

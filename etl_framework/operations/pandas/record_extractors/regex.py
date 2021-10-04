@@ -15,6 +15,7 @@ class RegexRecordExtractor(BaseDataFrameGenerator):
     """
     Extract records from text file by matching lines with Regex pattern with capture groups corresponding to fields
     Capture groups can be named or not
+    TODO: NEEDS REWORKING
     """
 
     def __init__(self, fields, pattern, enforce_match=True, header_lines=0):

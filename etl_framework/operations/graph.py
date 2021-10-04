@@ -14,11 +14,11 @@ class SubGraph(Operation):
         :param Operation operation: Operation to wrap in subgraph
         """
         super().__init__()
-        self.operation = self.wrap_operation(operation)
+        self.operation = self.add_child_operation(operation)
         self.label = label
 
     def action(self, *args, **kwargs):
-        return self.run_wrapped_operation(self.operation, *args, **kwargs)
+        return self.run_child_operation(self.operation, *args, **kwargs)
 
     def description(self):
         return self.operation.description()

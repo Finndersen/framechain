@@ -45,7 +45,7 @@ class SetColumn(ConditionallyAppliedOperation):
         # Get Masked/filtered version of Dataframe
         transform_input = self.get_transform_input(dataframe, mask)
         # Perform transformation on dataframe
-        output_series = self.run_wrapped_operation(self.operation, transform_input)
+        output_series = self.run_child_operation(self.operation, transform_input)
         if not isinstance(output_series, pd.Series):
             self.error(ValueError,
                        'Transform: {} returns: "{}", not return a Series'.format(self.operation, type(output_series)))
@@ -173,7 +173,7 @@ class ConvertColumns(ConditionallyAppliedOperation):
             return dataframe
 
         transform_input = dataframe.loc[mask, self.fields] if mask is not None else dataframe[self.fields]
-        output_subset_df = self.run_wrapped_operation(self.operation, transform_input)
+        output_subset_df = self.run_child_operation(self.operation, transform_input)
         # Make shallow copy so changes arent made to original DF
         output_dataframe = dataframe.copy(deep=False)
         if mask is None:
@@ -197,11 +197,11 @@ class SetField(Operation):
         :param callable transform: Callable which either takes Series and returns a single value to set on the field
         """
         super().__init__()
-        self.transform = self.wrap_operation(transform)
+        self.transform = self.add_child_operation(transform)
         self.field = field
 
     def action(self, row):
-        row[self.field] = self.run_wrapped_operation(self.transform, row)
+        row[self.field] = self.run_child_operation(self.transform, row)
         return row
 
     def short_description(self):

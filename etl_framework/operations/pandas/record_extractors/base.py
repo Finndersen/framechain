@@ -8,6 +8,7 @@ from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
 from etl_framework.operations import BaseOperation, Operation, profiled, chain_operations
 from etl_framework.operations.pandas.transforms import ToNullableInteger, SetColumnTimezone, ColumnToDatetime, AsType, \
     ToNumeric
+from etl_framework.operations.pandas.utils import concat_dataframes
 from etl_framework.utils import LogDuration, chunks
 
 log = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ class BaseDataFrameGenerator(Operation):
         record_number_field = NonExtractedField(record_number_field_name,
                                                 column_converter=ToNumeric(downcast='unsigned'))
 
-        self.fields = [self.wrap_operation(field) for field in list(fields) + [record_number_field]]
+        self.fields = [self.add_child_operation(field) for field in list(fields) + [record_number_field]]
 
         # Validate field names are unique
         field_names = set()
@@ -51,36 +52,46 @@ class BaseDataFrameGenerator(Operation):
 
     def action(self, input_data):
         """
-        Takes ETL input parameter and returns Pandas Dataframe
+        Construct dataframe from input and perform field post-processing
 
         :param input_data: ETL input data. Type depends on requirements of specific Record Extractor
         """
         with LogDuration(log,
                          'Extracting records from input...'):  # TODO: Remove logging and add dedicated operation for logging
-            dataframe = self.get_full_dataframe(input_data)
+            dataframe = self.create_dataframe(input_data)
 
-        # Perform field vector conversions
-        with LogDuration(log, 'Performing vector field conversions...'):
-            for field in self.fields:
-                if field.post_process:
-                    if field.name in dataframe.columns:
-                        dataframe[field.name] = field.convert_column(dataframe[field.name])
-                    else:
-                        #  Add any missing fields as Null column
-                        dataframe[field.name] = np.nan
+        # Perform field vectorised conversions
+        dataframe = self.post_process_dataframe(dataframe)
 
         # Order fields
         dataframe = self.order_fields(dataframe)
 
         return dataframe
 
-    def get_full_dataframe(self, input_data):
+    def create_dataframe(self, input_data):
         """
         Build full dataframe of records
         :param input_data:
         :return: pd.DataFrame
         """
         raise NotImplementedError()
+
+    def post_process_dataframe(self, dataframe):
+        """
+        Perform field column conversions and add any missing fields
+        :param dataframe:
+        :return:
+        """
+        with LogDuration(log, 'Performing vector field conversions...'):
+            for field in self.fields:
+                if field.post_process:
+                    #  Add any missing fields as Null column
+                    if field.name not in dataframe.columns:
+                        dataframe[field.name] = pd.Series(np.nan, dtype=object)
+                    # Perform column processing (check for mandatory, set dtypes, custom conversions)
+                    dataframe[field.name] = field.convert_column(dataframe[field.name])
+
+        return dataframe
 
     def order_fields(self, dataframe):
         """
@@ -98,21 +109,21 @@ class BaseDataFrameGenerator(Operation):
         :return:
         """
         exec_time = self.get_cumulative_time()
-        for op in self.wrapped_operations:
+        for op in self.child_operations:
             exec_time -= op.get_cumulative_time()
         return exec_time
 
-    def get_wrapped_operation_stats(self, wrapped_operation):
+    def get_child_operation_stats(self, child_operation):
         """
         BaseDataFrameGenerator does not have visibility of Field.convert_value execution time
         Assume this is the only caller of the field instance and return full execution stats
-        :param wrapped_operation:
+        :param child_operation:
         :return:
         """
-        if isinstance(wrapped_operation, InputField):
-            return wrapped_operation.get_execution_stats()
+        if isinstance(child_operation, InputField):
+            return child_operation.get_execution_stats()
         else:
-            return super().get_wrapped_operation_stats(wrapped_operation)
+            return super().get_child_operation_stats(child_operation)
 
 
 class IterableRecordsDataframeGenerator(BaseDataFrameGenerator):
@@ -139,9 +150,9 @@ class IterableRecordsDataframeGenerator(BaseDataFrameGenerator):
         super().__init__(list(fields) + [record_type_field], **kwargs)
         self.chunk_size = chunk_size
         self.RECORDTYPE_FIELD_NAME = record_type_field_name
-        self.record_processor = self.wrap_operation(record_processor, none_allowed=True)
+        self.record_processor = self.add_child_operation(record_processor, none_allowed=True)
 
-    def get_full_dataframe(self, input_data):
+    def action(self, input_data):
         """
         Build full dataframe of records, by concatenating sub-dataframes of chunks of records
         :param input_data:
@@ -149,14 +160,19 @@ class IterableRecordsDataframeGenerator(BaseDataFrameGenerator):
         """
         # Get iterable of record chunks
         if self.record_processor:
-            records = (self.run_wrapped_operation(self.record_processor, record)
+            records = (self.run_child_operation(self.record_processor, record)
                        for record in self.get_records(input_data))
         else:
             records = self.get_records(input_data)
 
         # Build list of sub-dataframes and Join together into one dataframe
-        return pd.concat([self.create_dataframe(records_chunk)
-                          for records_chunk in chunks(records, self.chunk_size)])
+        dataframe = concat_dataframes([self.post_process_dataframe(self.create_dataframe(records_chunk))
+                                       for records_chunk in chunks(records, self.chunk_size)])
+
+        # Order fields
+        dataframe = self.order_fields(dataframe)
+
+        return dataframe
 
     def get_records(self, input_data):
         """
@@ -170,10 +186,12 @@ class IterableRecordsDataframeGenerator(BaseDataFrameGenerator):
     def create_dataframe(self, records):
         """
         Construct a dataframe from a chunk of records
+        Faster to construct when specifying columns
         :param records:
         :return:
         """
-        return pd.DataFrame(records)
+        return pd.DataFrame(records,
+                            columns=[field.name for field in self.fields if field.post_process])
 
 
 class InputField(BaseOperation):
@@ -207,13 +225,13 @@ class InputField(BaseOperation):
         super().__init__()
         self.name = name
         self.mandatory = mandatory
-        self.column_converter = self.wrap_operation(
+        self.column_converter = self.add_child_operation(
             chain_operations(column_converter,
                              AsType(dtype, copy=False) if dtype else None,
                              AsType(CategoricalDtype(ordered=True), copy=False) if categorical else None),
             none_allowed=True)
-        self.value_converter = self.wrap_operation(value_converter, none_allowed=True)
-        self.ignore_condition = self.wrap_operation(ignore_condition, none_allowed=True)
+        self.value_converter = self.add_child_operation(value_converter, none_allowed=True)
+        self.ignore_condition = self.add_child_operation(ignore_condition, none_allowed=True)
         self.dtype = dtype
         self.categorical = categorical
         self.post_process = post_process
@@ -227,12 +245,12 @@ class InputField(BaseOperation):
         if value in self.EMPTY_VALUES:
             return None
 
-        if self.ignore_condition and self.run_wrapped_operation(self.ignore_condition, value):
+        if self.ignore_condition and self.run_child_operation(self.ignore_condition, value):
             return None
 
         # Convert value if present
         if value is not None and self.value_converter:
-            value = self.run_wrapped_operation(self.value_converter, value)
+            value = self.run_child_operation(self.value_converter, value)
 
         return value
 
@@ -249,7 +267,7 @@ class InputField(BaseOperation):
 
         # Perform vectorised value conversion
         if self.column_converter:
-            column = self.run_wrapped_operation(self.column_converter, column)
+            column = self.run_child_operation(self.column_converter, column)
 
         # if self.dtype:
         #     column = column.astype(self.dtype, copy=False)

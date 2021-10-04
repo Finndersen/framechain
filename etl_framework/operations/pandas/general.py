@@ -67,7 +67,7 @@ class Apply(Operation):
         :param operation: Operation to apply to each element of vector
         """
         super().__init__()
-        self.operation = self.wrap_operation(operation)
+        self.operation = self.add_child_operation(operation)
 
     def action(self, vector):
         """
@@ -75,10 +75,10 @@ class Apply(Operation):
         :return:
         """
         if isinstance(vector, pd.DataFrame):
-            return vector.apply(lambda row: self.run_wrapped_operation(self.operation, row),
+            return vector.apply(lambda row: self.run_child_operation(self.operation, row),
                                 axis=1)
         elif isinstance(vector, pd.Series):
-            return vector.apply(lambda value: self.run_wrapped_operation(self.operation, value))
+            return vector.apply(lambda value: self.run_child_operation(self.operation, value))
         else:
             self.error(TypeError, 'Input should be DataFrame or Series')
 
@@ -116,7 +116,7 @@ class Mask(ConditionallyAppliedOperation):
         df_or_column_copy = df_or_column_original.copy(deep=isinstance(df_or_column_original, pd.Series))
 
         # Provide masked data to operation. Make copy to avoid SettingWithCopyWarning
-        transformed_values = self.run_wrapped_operation(self.operation, df_or_column_copy.loc[mask].copy())
+        transformed_values = self.run_child_operation(self.operation, df_or_column_copy.loc[mask].copy())
         # Integrate values back into original Dataframe or column
         df_or_column_copy.loc[mask] = transformed_values
 
