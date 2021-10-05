@@ -1,7 +1,5 @@
-import csv
-
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from etl_framework.operations.io import TextReader
 from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, \
@@ -11,14 +9,14 @@ from etl_framework.operations.transforms import BytesToString
 
 class DelimitedRecordExtractor(BaseDataFrameGenerator):
     """
-    Extract records from data file with fields seperated by delimiter character
+    Extract records from data file with fields separated by delimiter character
     Wrapper around pandas.read_csv
     Input is file text or bytes content or file reader object in text mode
     If file contains headers, field header_name attribute is used to match field
     Otherwise, Fields must provide
     """
 
-    def __init__(self, fields, delimiter=',', quoting=csv.QUOTE_MINIMAL, header=True, read_csv_kwargs=None, **kwargs):
+    def __init__(self, fields, delimiter=',', header=True, read_csv_kwargs=None, **kwargs):
         """
         :param tuple/list fields: List/tuple of CSVField(s)
         :param str delimiter: Delimiter character used for CSV reader
@@ -32,9 +30,15 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         if header and not all(isinstance(field.column_id, str) for field in fields):
             self.error(TypeError, 'All field column_ids must be strings if header=True')
 
+        defaults = {
+            'engine': 'c'  # C engine is faster but not as feature-complete
+        }
+
+        if read_csv_kwargs:
+            defaults.update(read_csv_kwargs)
+
         self.delimiter = delimiter
-        self.quoting = quoting
-        self.read_csv_kwargs = read_csv_kwargs or {}
+        self.read_csv_kwargs = defaults
         self.header = header
         super().__init__(fields, **kwargs)
 
@@ -67,7 +71,6 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         dataframe = pd.read_csv(file_data,
                                 sep=self.delimiter,
                                 header=0 if self.header else None,
-                                quoting=self.quoting,
                                 dtype=dtypes,
                                 converters=converters,
                                 **self.read_csv_kwargs)
@@ -108,6 +111,7 @@ class StringField(CSVField):
     """
     Field which converts values to String dtype
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args,
                          dtype=object, **kwargs)

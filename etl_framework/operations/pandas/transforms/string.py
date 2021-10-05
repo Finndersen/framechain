@@ -84,13 +84,27 @@ class Replace(ColumnOperation):
         return 'Replace "{}" with "{}"'.format(self.pattern, self.replace)
 
 
-class StripWhitespaces(ColumnOperation):
+class Strip(ColumnOperation):
     """
-    Strip whitespaces from string column
+    Strip whitespaces or other characters from string column
     """
+    def __init__(self, strip_chars=None):
+        """
+
+        :param str strip_chars: Specifying the set of characters to be removed.
+        All combinations of this set of characters will be stripped. If None then whitespaces are removed.
+        """
+        super().__init__()
+        self.strip_chars = strip_chars
 
     def action(self, column):
-        return column.str.strip()
+        return column.str.strip(self.strip_chars)
+
+    def description(self):
+        if self.strip_chars:
+            return 'Strip characters: "{}"'.format(self.strip_chars)
+        else:
+            return 'Strip whitespaces'
 
 
 class StringLength(ColumnOperation):
