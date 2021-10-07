@@ -55,13 +55,6 @@ class ChangedDataTypError(ETLError):
     pass
 
 
-
-
-class ASNDecodeError(ETLError):
-    """When field data format is not as expected, or missing when mandatory"""
-    pass
-
-
 class ETLFieldError(ETLError):
     """When field data format is not as expected, or missing when mandatory"""
     pass

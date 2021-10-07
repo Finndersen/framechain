@@ -1,3 +1,4 @@
+import etl_framework.operations.pandas.record_extractors.asn1_ber.exceptions
 from etl_framework import exceptions
 import logging
 
@@ -213,7 +214,7 @@ class Asn1Decoder(object):
         if node.end_pos is not None:
             return self.asn_data[node.value_pos:node.end_pos]
         else:
-            raise exceptions.ASNDecodeError('Cannot get data of node with no end position')
+            raise etl_framework.operations.pandas.record_extractors.asn1_ber.exceptions.ASNDecodeError('Cannot get data of node with no end position')
 
     def skip_node(self, node):
         """
@@ -247,7 +248,7 @@ class Asn1Decoder(object):
         if node.type:
             return self.decode_node(node, node.value_pos)
         else:
-            raise exceptions.ASNDecodeError('Cant get child node of primitive node')
+            raise etl_framework.operations.pandas.record_extractors.asn1_ber.exceptions.ASNDecodeError('Cant get child node of primitive node')
 
 
 class ASN1Node(object):

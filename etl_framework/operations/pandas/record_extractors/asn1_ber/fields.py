@@ -1,5 +1,6 @@
 from etl_framework.operations import profiled, BinaryDurationToInt
 from etl_framework.operations.pandas import ColumnToDatetime, ColumnMap, ToNullableInteger
+from etl_framework.operations.pandas.record_extractors.asn1_ber.exceptions import MultipleValueError
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
 from etl_framework.operations.transforms import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, \
     BytesToDateString, BytesToTime, BytesToTimeString, \
@@ -54,9 +55,12 @@ class ASN1BERField(InputField):
         if converted_value is None:
             return
 
-        # Set field value value in record
+        # Use aggregator to handle multiple values (in case of SEQUENCE OF elements)
         if self.aggregator:
             self.aggregator.add_to_record(record, self.name, converted_value)
+        # Raise error if multiple values but no aggregator defined
+        elif self.name in record:
+            raise MultipleValueError('Encountered multiple values for {}, but no aggregator defined'.format(self))
         else:
             record[self.name] = converted_value
 

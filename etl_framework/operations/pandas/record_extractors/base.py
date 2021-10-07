@@ -2,10 +2,9 @@ import logging
 
 import numpy as np
 import pandas as pd
-from pandas import CategoricalDtype
 
 from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
-from etl_framework.operations import BaseOperation, Operation, profiled, chain_operations, Pass
+from etl_framework.operations import BaseOperation, Operation, profiled, Pass
 from etl_framework.operations.pandas.transforms import ToNullableInteger, SetColumnTimezone, ColumnToDatetime, AsType, \
     ToNumeric
 from etl_framework.operations.pandas.utils import concat_dataframes
@@ -27,17 +26,18 @@ class BaseDataFrameGenerator(Operation):
     def __init__(self, fields, record_number_field_name='_record_number'):
         """
         :param list/tuple of InputFields fields: List of Field instances to define extraction and conversion logic
-        :param str record_number_field_name: Name of field to store record number in. Should represent original record
+        :param str, None record_number_field_name: Name of field to store record number in. Should represent original record
         number in source, not necessarily record number in output DF
         """
         super().__init__()
 
         self.RECORDNUMBER_FIELD_NAME = record_number_field_name
-        # Add field for Record Number (which only does post-processing and not extraction)
-        record_number_field = NonExtractedField(record_number_field_name,
-                                                column_converter=ToNumeric(downcast='unsigned'))
+        if record_number_field_name:
+            # Add field for Record Number (which only does post-processing and not extraction)
+            fields = list(fields) + [NonExtractedField(record_number_field_name,
+                                                       column_converter=ToNumeric(downcast='unsigned'))]
 
-        self.fields = [self.add_child_operation(field) for field in list(fields) + [record_number_field]]
+        self.fields = [self.add_child_operation(field) for field in fields]
 
         # Validate field names are unique
         field_names = set()
@@ -140,14 +140,15 @@ class IterableRecordsDataframeGenerator(BaseDataFrameGenerator):
 
         :param list, tuple fields:
         :param record_processor: Optional callable used to process each record before being provided to DataFrame initialisation
-        :param str record_type_field_name: Name to give record type of each record
+        :param str, None record_type_field_name: Name to give record type of each record
         :param int chunk_size: Length of record chunks to construct dataframe from (can save memory usage)
         :param kwargs:
         """
         # Add field for Record Type (which only does post-processing and not extraction)
-        record_type_field = NonExtractedField(record_type_field_name, column_converter=AsType('category'))
+        if record_type_field_name:
+            fields = list(fields) + [NonExtractedField(record_type_field_name, column_converter=AsType('category'))]
 
-        super().__init__(list(fields) + [record_type_field], **kwargs)
+        super().__init__(fields, **kwargs)
         self.chunk_size = chunk_size
         self.RECORDTYPE_FIELD_NAME = record_type_field_name
         self.record_processor = self.add_child_operation(record_processor, none_allowed=True)
@@ -229,7 +230,8 @@ class InputField(BaseOperation):
             Pass() >>
             (AsType(dtype, copy=False) if dtype else None) >>
             column_converter >>
-            (AsType(CategoricalDtype(ordered=True), copy=False) if categorical else None)
+            (AsType('category', copy=False) if categorical else None)
+            # TODO: Change to Ordered Categorical type when pandas upgraded
         )
         self.value_converter = self.add_child_operation(value_converter, none_allowed=True)
         self.ignore_condition = self.add_child_operation(ignore_condition, none_allowed=True)

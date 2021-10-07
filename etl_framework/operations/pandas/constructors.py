@@ -2,28 +2,26 @@
 Operations which are used to help construct more complex field-based transforms with masking capability
 """
 import pandas as pd
-import numpy as np
-from pandas.api.types import is_datetime64_any_dtype, is_categorical_dtype
 
-from etl_framework.exceptions import ChangedDataTypError, ETLConfigurationError
 from etl_framework.operations import Operation
-from etl_framework.operations.pandas import Field, IsNull, ConditionallyAppliedOperation
+from etl_framework.operations.pandas import Field, integrate_masked_series
+from etl_framework.utils import randomstring
 
 
-class SetColumn(ConditionallyAppliedOperation):
+class SetColumn(Operation):
     """
     Set a column/field values using a transformation operation. Creates new column if doesnt already exist in DataFrame
     Can provide a conditional operation which is used to create a mask
     """
 
-    def __init__(self, field, transform, condition=None):
+    def __init__(self, column_name, transform):
         """
-        :param str field: Name of column to populate output values in
+        :param str column_name: Name of column to populate output values in
         :param callable transform: Callable which takes Dataframe and returns Series.
-        :param callable condition: callable which takes dataframe and returns a boolean series mask.
         """
-        super().__init__(transform, condition=condition)
-        self.field = field
+        super().__init__()
+        self.operation = self.add_child_operation(transform)
+        self.column_name = column_name
 
     def action(self, dataframe):
         """
@@ -33,155 +31,76 @@ class SetColumn(ConditionallyAppliedOperation):
         """
         # Make shallow copy so changes arent made to original DF
         dataframe = dataframe.copy(deep=False)
-        # Get transform mask
-        mask = self.get_mask(dataframe)
-        # Exit early if mask does not match any values (no changes made)
-        if mask is not None and not mask.any():
-            # Add empty column if doesnt exist
-            if self.field not in dataframe.columns:
-                dataframe[self.field] = np.nan
-            return dataframe
 
         # Get Masked/filtered version of Dataframe
-        transform_input = self.get_transform_input(dataframe, mask)
+        transform_input = self.get_transform_input(dataframe)
         # Perform transformation on dataframe
         output_series = self.run_child_operation(self.operation, transform_input)
         if not isinstance(output_series, pd.Series):
             self.error(ValueError,
                        'Transform: {} returns: "{}", not return a Series'.format(self.operation, type(output_series)))
 
-        # Add output Series back into original dataframe
-        if mask is not None:
-            # Perform checks if integrating with existing column
-            if self.field in dataframe.columns:
-                # Raise error if datetime dtype of column has changed (can cause issues with timezone mismatch)
-                if (dataframe[self.field].dtype != output_series.dtype and
-                        is_datetime64_any_dtype(dataframe[self.field].dtype)):
-                    raise ChangedDataTypError(
-                        'Operation: "{}" changes datetime datatype of masked values from "{}" to "{}", which may have undesired effect. '
-                        'Removing any conditions may resolve the issue'.format(self.operation,
-                                                                               dataframe[self.field].dtype,
-                                                                               output_series.dtype))
-
-                # If merging with existing Category column, need to align categories
-                if is_categorical_dtype(dataframe[self.field]):
-                    output_series = output_series.astype('category')
-                    all_categories = dataframe[self.field].cat.categories.union(output_series.cat.categories)
-                    dataframe[self.field] = dataframe[self.field].cat.set_categories(all_categories)
-                    output_series = output_series.cat.set_categories(all_categories)
-
-            # Need to use .loc with mask to not overwrite existing values
-            dataframe.loc[mask, self.field] = output_series
-        else:
-            dataframe[self.field] = output_series
+        dataframe[self.column_name] = output_series
 
         return dataframe
 
-    def get_transform_input(self, dataframe, mask):
+    def get_transform_input(self, dataframe):
         """
         Mask entire dataframe if appropriate
         """
-        return dataframe[mask] if mask is not None else dataframe
-
-    def short_description(self):
-        rep = 'Set column "{}"'.format(self.field)
-        if self.condition:
-            rep = rep + ' with condition: {}'.format(self.condition)
-        return rep
+        return dataframe
 
     def description(self):
-        rep = 'Set column "{}" value using transform: {}'.format(self.field, self.operation)
-        if self.condition:
-            rep = rep + ' with condition: {}'.format(self.condition)
-        return rep
+        return 'Set column "{}" value using transform: {}'.format(self.column_name, self.operation)
 
 
-class ConvertColumn(SetColumn):
+def ConvertColumn(column_name, column_transform):
     """
-    Apply a conversion operation to a single existing column
+    Convenience function for defining a conversion transformation operation on a single column
+    :param str column_name: name of field to convert
+    :param column_transform:  Callable which performs transform operation on series and returns transformed series
     """
-    wrapping_translations = {'dataframe': 'column'}
-
-    def __init__(self, field, column_transform, condition=None, ignore_null=False):
-        """
-        :param str field: name of field to convert
-        :param column_transform:  Callable which performs transform operation on series and returns transformed series
-        :param str input_field: name of field/column to supply to transform function. (defaults to output field)
-        :param callable condition: callable which takes dataframe and returns a filter mask.
-        :param bool ignore_null: Whether to add condition to mask out null values if condition is not provided
-        If not specified, NotNull condition will be applied. Set to False to disable
-        """
-        super().__init__(field, column_transform, condition)
-        changes_type = getattr(column_transform, 'changes_type', False)
-        # Add NotNull filter condition
-        if not condition and not changes_type and ignore_null:
-            condition = Field(field) >> ~IsNull()
-        # Validate condition is not provided if transform changes data type of column
-        if changes_type and condition:
-            self.error(ETLConfigurationError,
-                       'Should not define condition for {} because it changes column data type'.format(
-                           column_transform))
-
-    def get_transform_input(self, dataframe, mask):
-        """
-        Only apply mask to target column (not whole dataframe)
-        :param dataframe:
-        :param mask:
-        :return: potentially masked Series of target field
-        """
-        # Verify column already exists
-        if self.field not in dataframe.columns:
-            raise KeyError('Field: "{}" does not exist in DataFrame'.format(self.field))
-        return dataframe.loc[mask, self.field].copy() if mask is not None else dataframe[self.field]
-
-    def short_description(self):
-        rep = 'Convert column "{}"'.format(self.field)
-        if self.condition:
-            rep = rep + ' with condition: {}'.format(self.condition)
-        return rep
-
-    def description(self):
-        return 'Convert column "{}" using transform: {} with condition: {}'.format(self.field, self.operation,
-                                                                                  self.condition)
+    return SetColumn(column_name, Field(column_name) >> column_transform)
 
 
-class ConvertColumns(ConditionallyAppliedOperation):
+class ApplyToColumns(Operation):
     """
-    Select a subset of columns from a DataFrame to apply operations to.
-    Initialise with transform which is provided this subset dataframe and returns a transformed dataframe with same
-    number of columns.
+    Select a subset of columns from a DataFrame to apply an operation to, and then re-integrate result back into
+    original DF
     Allows for better performance of operations applied to entire DF (e.g. Apply, FillNA) when only subset of fields
     are required
     """
-    def __init__(self, fields, transform, condition=None):
+
+    def __init__(self, columns, transform):
         """
-        :param list fields: List of column names to select to create subset dataframe
-        :param callable transform: Callable which takes Dataframe and returns Dataframe of same size
-        :param callable condition: callable which takes dataframe  and returns a boolean series mask.
+        :param list columns: List of column names to select to create subset dataframe
+        :param callable transform: Callable which takes sub-Dataframe and returns Dataframe of same length
         """
-        super().__init__(transform, condition=condition)
-        if not isinstance(fields, (list, tuple)):
+        super().__init__()
+        if not isinstance(columns, (list, tuple)):
             raise TypeError('Fields must be provided as list or tuple')
-        self.fields = fields
+        self.columns = columns
+        self.transform = self.add_child_operation(transform)
 
-    def action(self, dataframe):
+    def action(self, full_dataframe):
+        """
 
-        # Get conditional mask
-        mask = self.get_mask(dataframe)
-        # Exit early if mask does not match any values (no changes made)
-        if mask is not None and not mask.any():
-            return dataframe
-
-        transform_input = dataframe.loc[mask, self.fields] if mask is not None else dataframe[self.fields]
-        output_subset_df = self.run_child_operation(self.operation, transform_input)
+        :param pd.DataFrame full_dataframe:
+        :return:
+        """
+        # Call transform with subset of dataframe columns
+        result_subset_df = self.run_child_operation(self.transform, full_dataframe[self.columns])
         # Make shallow copy so changes arent made to original DF
-        output_dataframe = dataframe.copy(deep=False)
-        if mask is None:
-            output_dataframe[self.fields] = output_subset_df
-        else:
-            output_dataframe.loc[mask, self.fields] = output_subset_df
+        full_dataframe = full_dataframe.copy(deep=False)
+        # Integrate result columns back into dataframe (including any extra columns added)
+        for column_name in result_subset_df.columns:
+            full_dataframe[column_name] = result_subset_df[column_name]
 
-        return output_dataframe
+        # Remove any deleted columns
+        full_dataframe = full_dataframe.drop(columns=[column_name for column_name in self.columns
+                                                      if column_name not in result_subset_df.columns])
+
+        return full_dataframe
 
 
 class SetField(Operation):
@@ -191,6 +110,7 @@ class SetField(Operation):
     Should be used within an Apply() wrapper (better than using multiple instances of SetColumn with Apply(), since
     Apply() is expensive)
     """
+
     def __init__(self, field, transform):
         """
         :param str field: Name of column to populate output values in
@@ -209,3 +129,146 @@ class SetField(Operation):
 
     def description(self):
         return 'Set field "{}" value using transform: {}'.format(self.field, self.transform)
+
+
+class Apply(Operation):
+    """
+    Apply an operation to each element of input vector (DataFrame or Series) and return a resultant vector of same type
+    with transformed values
+    Can use in combination with Mask() operation to apply to subset of vector input, e.g. skip null values
+    When doing Apply() on Dataframe (iterating through Rows), best to use ApplyToColumns to select only the columns
+    required by the applied operation for better performance
+    """
+
+    def __init__(self, operation):
+        """
+        :param operation: Operation to apply to each element of vector
+        """
+        super().__init__()
+        self.operation = self.add_child_operation(operation)
+
+    def action(self, vector):
+        """
+        :param vector: Dataframe or Column (series)
+        :return:
+        """
+        if isinstance(vector, pd.DataFrame):
+            return vector.apply(lambda row: self.run_child_operation(self.operation, row),
+                                axis=1)
+        elif isinstance(vector, pd.Series):
+            return vector.apply(lambda value: self.run_child_operation(self.operation, value))
+        else:
+            self.error(TypeError, 'Input should be DataFrame or Series')
+
+    def description(self):
+        return 'Apply to each row: ({}) '.format(self.operation)
+
+
+class Mask(Operation):
+    """
+    Masking wrapper which takes Dataframe or Series input, applies conditional logic to produce mask,
+    passes masked content to wrapped operation, and then integrates result back into original input
+    If input is DataFrame, operation can add new columns or transform existing
+    Can also provide an inverse operation to apply to the inverted condition content
+    TODO: Rename to something better
+    """
+
+    def __init__(self, condition, operation, inverse_operation=None):
+        """
+
+        :param condition: Callable which takes Dataframe or column and returns boolean series mask
+        :param operation: Operation to pass masked column to
+        :param inverse_operation: Optional operation to apply to data from inverted mask
+        """
+        super().__init__()
+        self.operation = self.add_child_operation(operation)
+        self.condition = self.add_child_operation(condition)
+        self.inverse_operation = self.add_child_operation(inverse_operation, none_allowed=True)
+
+    def action(self, df_or_series):
+        """
+
+        :param pd.DataFrame, pd.Series df_or_series:
+        :return:
+        """
+        # Get mask using condition (should be read-only operation)
+        mask = self.run_child_operation(self.condition, df_or_series)
+
+        # Validate mask
+        if not pd.api.types.is_bool_dtype(mask):
+            self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
+
+        # Convert nullable-boolean type mask to standard boolean, because doesnt work when setting (nulls become falsey)
+        if str(mask.dtype) == 'boolean':
+            mask = mask.fillna(False).astype(bool)
+
+        # Apply operation to masked DF content
+        df_or_series = self.apply_operation_with_mask(df_or_series, self.operation, mask)
+
+        # Apply inverse operation if provided
+        if self.inverse_operation:
+            df_or_series = self.apply_operation_with_mask(df_or_series, self.inverse_operation, ~mask)
+
+        return df_or_series
+
+    def apply_operation_with_mask(self, df_or_series, operation, mask):
+        """
+        Apply operation to masked subset of input, and integrate result back in
+        :param df_or_series:
+        :param operation:
+        :param pd.Series mask:
+        :return: resultant DF or Series
+        """
+        # Provide masked data to operation. Make copy to avoid SettingWithCopyWarning
+        transformed_output = self.run_child_operation(operation, df_or_series.iloc[mask.values].copy())
+
+        if isinstance(df_or_series, pd.DataFrame):
+            # Verify output is also DataFrame
+            if not isinstance(transformed_output, pd.DataFrame):
+                raise TypeError(
+                    'Expected DataFrame output from DataFrame input, but got: {}'.format(type(transformed_output)))
+
+            # Make copy to avoid making changes to original DF
+            dataframe = df_or_series.copy()
+            # Integrate values back into original Dataframe
+            for column_name in transformed_output.columns:
+                # Integrate with existing column using mask
+                if column_name in dataframe.columns:
+                    dataframe[column_name] = integrate_masked_series(dataframe[column_name],
+                                                                     transformed_output[column_name],
+                                                                     mask)
+                else:
+                    # Create new column with mask
+                    dataframe.loc[mask, column_name] = transformed_output[column_name]
+            return dataframe
+
+        elif isinstance(df_or_series, pd.Series):
+            # Verify output is also Series
+            if not isinstance(transformed_output, pd.Series):
+                raise TypeError(
+                    'Expected Series output from Series input, but got: {}'.format(type(transformed_output)))
+
+            # Integrate values back into original Series
+            series = integrate_masked_series(df_or_series.copy(), transformed_output, mask)
+            return series
+
+        else:
+            raise TypeError('Expected DataFrame or Series input, not: {}'.format(type(df_or_series)))
+
+    def add_to_graph(self, graph):
+        # Create Subgraph/cluster to contain wrapped operation
+        from pydot import Cluster
+        subgraph = Cluster(graph_name=randomstring(10), label=self.short_description())
+        start_node, end_node = self.operation.add_to_graph(subgraph)
+        graph.add_subgraph(subgraph)
+        # TODO: Need to add graph visualisation for inverse operation...
+        return start_node, end_node
+
+    def description(self):
+        desc = 'Mask input with condition ({}) and apply ({})'.format(self.condition, self.operation)
+        if self.inverse_operation:
+            desc += ', and apply ({}) to inverted mask'.format(self.inverse_operation)
+        return desc
+
+    def short_description(self):
+        return 'Apply operation on input with mask condition ({})'.format(self.condition)

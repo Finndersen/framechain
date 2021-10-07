@@ -101,7 +101,29 @@ class ListAggregator(BaseFieldValueAggregator):
         return existing_value
 
 
-class SetAggregator(BaseFieldValueAggregator):
+class TupleAggregator(BaseFieldValueAggregator):
+    """
+    Aggregator which creates tuple of values and appends new one
+    """
+    def get_initial_value(self, initial_value):
+        """
+        Initialise list with single value
+        :param initial_value:
+        :return:
+        """
+        return (initial_value,)
+
+    def get_aggregate_value(self, existing_value, new_value):
+        """
+        Append new value to list
+        :param existing_value:
+        :param new_value:
+        :return:
+        """
+        return existing_value + (new_value,)
+
+
+class UniqueAggregator(BaseFieldValueAggregator):
     """
     Aggregator which creates set of unique values
     """

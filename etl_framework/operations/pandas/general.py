@@ -1,9 +1,11 @@
+import itertools
+
+import pandas as pd
+
+from etl_framework.exceptions import ETLConfigurationError
 from etl_framework.operations import Operation
 from etl_framework.operations.general import Map
-from etl_framework.exceptions import ETLConfigurationError
-import pandas as pd
-from etl_framework.operations.pandas.base import ColumnOperation, ConditionallyAppliedOperation
-import itertools
+from etl_framework.operations.pandas.base import ColumnOperation
 
 
 class Field(Operation):
@@ -47,96 +49,6 @@ class ColumnMap(Map, ColumnOperation):
         return value.map(self.mapping)
 
 
-class Apply(Operation):
-    """
-    Wrapper which translates input from vector to scalar in Column axis
-    e.g. Dataframe - > rows or Series -> values
-    """
-    wrapping_translations = {
-        'dataframe': 'row',
-        'column': 'value'
-    }
-
-    calling_translations = {
-        'dataframe': 'column',
-        'column': 'column'
-    }
-
-    def __init__(self, operation):
-        """
-        :param operation: Operation to apply to each element of vector
-        """
-        super().__init__()
-        self.operation = self.add_child_operation(operation)
-
-    def action(self, vector):
-        """
-        :param vector: Dataframe or Column (series)
-        :return:
-        """
-        if isinstance(vector, pd.DataFrame):
-            return vector.apply(lambda row: self.run_child_operation(self.operation, row),
-                                axis=1)
-        elif isinstance(vector, pd.Series):
-            return vector.apply(lambda value: self.run_child_operation(self.operation, value))
-        else:
-            self.error(TypeError, 'Input should be DataFrame or Series')
-
-    def description(self):
-        return 'Apply to each row: ({}) '.format(self.operation)
-
-
-class Mask(ConditionallyAppliedOperation):
-    """
-    Masking wrapper which takes Dataframe or Column, applies conditional logic to produce mask,
-    and passes masked content to wrapped operation, and then integrates result back into original input
-    It is possible to use operations to delete rows of a masked DF (e.g. using DeleteRows),
-    however it is not recommended and does not have good performance
-    """
-
-    def __init__(self, condition, operation):
-        """
-
-        :param condition: Callable which takes Dataframe or column and returns boolean series mask
-        :param operation: Operation to pass masked column to
-        """
-
-        super().__init__(operation, condition=condition)
-
-    def action(self, df_or_column_original):
-
-        # Get mask using condition (should be read-only operation)
-        mask = self.get_mask(df_or_column_original)
-
-        # Exit early if mask does not match any values (unless input is DF cause transform may add extra empty columns)
-        if isinstance(df_or_column_original, pd.Series) and not mask.any():
-            return df_or_column_original
-
-        # Make copy to avoid making changes to original Series or DF (deep copy if Series)
-        df_or_column_copy = df_or_column_original.copy(deep=isinstance(df_or_column_original, pd.Series))
-
-        # Provide masked data to operation. Make copy to avoid SettingWithCopyWarning
-        transformed_values = self.run_child_operation(self.operation, df_or_column_copy.loc[mask].copy())
-        # Integrate values back into original Dataframe or column
-        df_or_column_copy.loc[mask] = transformed_values
-
-        if isinstance(df_or_column_copy, pd.DataFrame):
-            # Add in any extra columns that may have been added to masked Dataframe
-            for column_name in transformed_values.columns:
-                if column_name not in df_or_column_copy.columns:
-                    df_or_column_copy.loc[mask, column_name] = transformed_values[column_name]
-            # Filter out any fully null rows in case DeleteRows operation was applied to masked content
-            df_or_column_copy.dropna(how='all', inplace=True)
-
-        return df_or_column_copy
-
-    def description(self):
-        return 'Mask with condition ({}) and apply ({})'.format(self.condition, self.operation)
-
-    def short_description(self):
-        return 'Apply operation with mask condition ({})'.format(self.condition)
-
-
 class ColumnOfValue(Operation):
     """
     Returns a column/Series of equal constant values, with length equal to that of input DataFrame
@@ -177,6 +89,7 @@ class FillNA(Operation):
     """
     Fill NA values of column or DF with specified value
     """
+
     def __init__(self, value):
         """
 
@@ -201,6 +114,7 @@ class Min(Operation):
     """
     Get minimum value of Series (scalar value) or row-wise minimum of Dataframe (Series of minimums for each row)
     """
+
     def __init__(self, axis=None):
         """
 
@@ -290,4 +204,3 @@ class MergeRowValues(Operation):
     def description(self):
         return 'Merge [{}] row values using function: "{}"'.format(', '.join(self.field_names),
                                                                    self.merge_function)
-

@@ -1,6 +1,7 @@
 """
 Operations for generating and processing Pandas Dataframes and Series
 """
+from .utils import *
 from .general import *
 from .conditional import *
 from .transforms import *

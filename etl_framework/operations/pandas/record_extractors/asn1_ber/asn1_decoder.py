@@ -1,15 +1,9 @@
-from etl_framework.exceptions import EndOfFileError, ETLConfigurationError, ASNDecodeError
-from collections import defaultdict
 import logging
+from collections import defaultdict
+
+from .exceptions import ASNDecodeError, SkipRecordError, EndOfFileError, ETLConfigurationError
 
 log = logging.getLogger(__name__)
-
-
-class SkipRecordError(Exception):
-    """
-    Exception for skipping entire root-level ASN1 record
-    """
-    pass
 
 
 class ASN1Node(object):
@@ -37,13 +31,23 @@ class ASN1Node(object):
         self.end_pos = None if value_len is None else (start_pos + tag_len + value_len)
         self.depth = parent.depth + 1 if parent else 0
         # Calculate unique absolute ID of node (add 1 so it will always contribute something)
-        self.id = (tag_number if parent is None else (parent.id<<8) + tag_number) + 1
+        self.id = (tag_number if parent is None else (parent.id << 8) + tag_number) + 1
+
+    def full_id(self):
+        """
+        Get Full ASN1 ID of node (hyphen-seperated tag number string format)
+        :return:
+        """
+        if self.parent:
+            return '{}-{}'.format(self.parent.full_id(), self.tag_number)
+        else:
+            return str(self.tag_number)
 
     def __repr__(self):
-        return 'ASN1Node #{} from {} to {} ({})'.format(self.tag_number,
-                                                        self.start_pos,
-                                                        self.end_pos if self.end_pos else '<Unknown>',
-                                                        'C' if self.constructed else 'P')
+        return 'ASN1Node {} with data from {} to {} ({})'.format(self.full_id(),
+                                                                 self.start_pos,
+                                                                 self.end_pos if self.end_pos else '<Unknown>',
+                                                                 'C' if self.constructed else 'P')
 
 
 class ASN1BERDecoder(object):
@@ -67,7 +71,8 @@ class ASN1BERDecoder(object):
             if isinstance(field.asn_ids, dict):
                 for record_type_name in field.asn_ids:
                     if record_type_name not in record_type_names:
-                        raise ETLConfigurationError('Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
+                        raise ETLConfigurationError(
+                            'Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
 
             # Validate no duplicate field names
             if field.name in field_names:
@@ -75,8 +80,9 @@ class ASN1BERDecoder(object):
 
             # Validate no field has same name as recordtype field name
             if field.name == self.RECORDTYPE_FIELD_NAME:
-                raise ETLConfigurationError('ASN1 record schema defined with field name same as recordtype field name: {}'.format(
-                               self.RECORDTYPE_FIELD_NAME))
+                raise ETLConfigurationError(
+                    'ASN1 record schema defined with field name same as recordtype field name: {}'.format(
+                        self.RECORDTYPE_FIELD_NAME))
 
             field_names.add(field.name)
 
@@ -316,6 +322,7 @@ class ASN1RecordType(object):
     """
     Simple object to define an ASN1 record type
     """
+
     def __init__(self, name, asn_id):
         """
         :param str name: name of record type

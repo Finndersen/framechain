@@ -1,7 +1,9 @@
 import pandas as pd
-from pandas.api.types import is_object_dtype, is_string_dtype, is_categorical_dtype, is_datetime64_any_dtype, union_categoricals
+from pandas.api.types import is_object_dtype, is_string_dtype, is_categorical_dtype, is_datetime64_any_dtype, is_bool_dtype
 from operator import and_
 from functools import reduce
+
+from etl_framework.exceptions import ChangedDataTypError
 
 
 def optimise_dataframe(dataframe):
@@ -128,4 +130,48 @@ def concat_dataframes(dataframes):
     return pd.concat(dataframes)
 
 
+def integrate_masked_series(dest_series, new_series, mask):
+    """
+    Integrate one series into another using a boolean mask
+    If mask is provided, should have length equal to dest_series and length of new_series should be equal to number of
+    True elements in mask
 
+    :param pd.Series dest_series: Destination series to merge new content into
+    :param pd.Series new_series: Series containing new data to integrate
+    :param pd.Series mask: Boolean array mask for merging new series data
+    :return: pd.Series: New merged series
+    """
+    # Mask must be boolean series
+    if not (isinstance(mask, pd.Series) and is_bool_dtype(mask)):
+        raise TypeError('Mask must be a boolean Series, not {}'.format(mask.dtype if isinstance(mask, pd.Series)
+                                                                       else type(mask)))
+
+    # Convert nullable-boolean type mask to standard boolean, because doesnt work when setting (nulls become falsey)
+    if str(mask.dtype) == 'boolean':
+        mask = mask.fillna(False).astype(bool)
+
+    # If merging with existing Category column, need to align categories
+    if is_categorical_dtype(dest_series):
+        new_series = new_series.astype('category')
+        all_categories = dest_series.cat.categories.union(new_series.cat.categories)
+        dest_series = dest_series.cat.set_categories(all_categories)
+        new_series = new_series.cat.set_categories(all_categories)
+
+    if dest_series.dtype != new_series.dtype:
+        # Raise error if datetime dtype of column has changed (can cause issues with timezone mismatch)
+        if is_datetime64_any_dtype(dest_series):
+            raise ChangedDataTypError(
+                'Datetime datatype of masked values has changed from "{}" to "{}", which may have undesired effect. '
+                'Removing any conditions may resolve the issue'.format(dest_series.dtype, new_series.dtype))
+        # TODO: Other type checks..
+
+    # Verify new_series length is equal to number of True elements in mask
+    if len(new_series.index) != mask.sum():
+        raise ValueError('New Series length ({}) does not match boolean mask True value count ({})'.format(len(new_series.index),
+                                                                                                           mask.values.sum()))
+    # Make copy to avoid making changes to original Series
+    result_series = dest_series.copy()
+    # Need to use .iloc with mask to not overwrite existing values
+    result_series.iloc[mask.values] = new_series
+
+    return result_series
