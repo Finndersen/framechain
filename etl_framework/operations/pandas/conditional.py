@@ -41,9 +41,6 @@ class IsNull(ColumnOperation):
     def action(self, column):
         return column.isna()
 
-    def description(self):
-        return ' is Null'
-
 
 class IsEmpty(Operation):
     """

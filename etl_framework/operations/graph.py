@@ -17,11 +17,14 @@ class SubGraph(Operation):
         self.operation = self.add_child_operation(operation)
         self.label = label
 
-    def action(self, *args, **kwargs):
-        return self.run_child_operation(self.operation, *args, **kwargs)
+    def action(self, *args):
+        return self.run_child_operation(self.operation, *args)
 
     def description(self):
         return self.operation.description()
+
+    def short_description(self):
+        return self.operation.short_description()
 
     def add_to_graph(self, graph):
         # Create Subgraph/cluster to contain wrapped operation

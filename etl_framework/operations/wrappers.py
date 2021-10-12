@@ -8,24 +8,18 @@ class Cached(Operation):
     Should wrap actual transform directly (not another TransformWrapper)
     Only compatible with Scalar (value) transforms
     """
-    wrapping_translations = {
-        'value': 'value'
-    }
-
-    calling_translations = wrapping_translations
 
     def __init__(self, operation):
         super().__init__()
         self.operation = Memoized(self.add_child_operation(operation, wrap_value=False))
 
-    def action(self, *args, **kwargs):
+    def action(self, *args):
         """
 
-        :param args: Transformation primary argument (may not exist if MapFields came first)
-        :param kwargs: extra transformation arguments potentially supplied from WithArgs or MapFields
+        :param args: Transformation primary argument
         :return:
         """
-        return self.run_child_operation(self.operation, *args, **kwargs)
+        return self.run_child_operation(self.operation, *args)
 
     def description(self):
         return '({}) with caching'.format(self.operation)
@@ -37,12 +31,6 @@ class MapArguments(Operation):
     using specified operation/transform logic for each argument
 
     """
-    wrapping_translations = {
-        'dataframe': 'column',
-        'row': 'value'
-    }
-    #
-    calling_translations = wrapping_translations
 
     def __init__(self, operation, **arg_mapping):
         """
@@ -54,13 +42,13 @@ class MapArguments(Operation):
         self.arg_mapping = {arg_name: self.add_child_operation(op) for arg_name, op in arg_mapping.items()}
         self.operation = self.add_child_operation(operation)
 
-    def action(self, *args, **kwargs):
+    def action(self, *args):
         """
 
-        :param input_val: Value which will be passed to arg_mappings to generate input arguments for operation
+        :param args: Values which will be passed to arg_mappings to generate input arguments for operation
         :return:
         """
-        return self.run_child_operation(self.operation, **{arg_name: arg_operation(*args, **kwargs)
+        return self.run_child_operation(self.operation, **{arg_name: arg_operation(*args)
                                                            for arg_name, arg_operation in self.arg_mapping.items()})
 
     def description(self):
@@ -73,11 +61,6 @@ class DynamicallyConfiguredOperation(Operation):
     Wrapper that allows an operation to be initialised with dynamic attributes (e.g. from Context dictionary)
     Provide operation class and args and kwargs to initialise with (values should be callables)
     """
-    wrapping_translations = {
-        'dataframe': 'dataframe',
-        'column': 'column',
-        'value': 'value'
-    }
 
     def __init__(self, operation_class, *op_args, **op_kwargs):
         """

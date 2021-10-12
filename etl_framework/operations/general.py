@@ -28,7 +28,7 @@ class ContextValue(Operation):
         super().__init__()
         self.key_name = key_name
 
-    def action(self, *args, **kwargs):
+    def action(self, *args):
         return transform_context[self.key_name]
 
     def description(self):
@@ -173,5 +173,3 @@ class ArgsToList(Operation):
     """
     def action(self, *args):
         return args
-
-

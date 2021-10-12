@@ -122,17 +122,6 @@ class IntegerField(IntegerFieldMixin, CSVField):
     Field which converts values to Nullable Integer type
     """
     pass
-    #
-    # def __init__(self, name, large=False, **kwargs):
-    #     """
-    #
-    #     :param name:
-    #     :param bool large: Whether integer may be very large (greater than 2,147,483,647) (use 64-bit)
-    #     :param kwargs:
-    #     """
-    #     super().__init__(name,
-    #                      dtype='Int64' if large else 'Int32',
-    #                      **kwargs)
 
 
 class TimestampField(TimestampFieldMixin, CSVField):

@@ -1,9 +1,10 @@
 import pandas as pd
+import numpy as np
 from pandas.api.types import is_object_dtype, is_string_dtype, is_categorical_dtype, is_datetime64_any_dtype, is_bool_dtype
 from operator import and_
 from functools import reduce
 
-from etl_framework.exceptions import ChangedDataTypError
+from etl_framework.exceptions import ChangedDataTypeError, DTypeError
 
 
 def optimise_dataframe(dataframe):
@@ -121,11 +122,18 @@ def concat_dataframes(dataframes):
     # Align categories for common categorical columns
     common_columns = reduce(and_, (set(df.columns) for df in dataframes))
     for column_name in common_columns:
-        if is_categorical_dtype(dataframes[0][column_name]):
-            all_categories = union_indexes(df[column_name].cat.categories for df in dataframes)
-            # Set new categories on column
-            for df in dataframes:
-                df[column_name] = df[column_name].cat.set_categories(all_categories)
+        first_df_column = dataframes[0][column_name]
+        # Check for dtype mismatches
+        if any(df[column_name].dtype != first_df_column.dtype for df in dataframes[1:]):
+            # Align categories of categorical DTYPE
+            if is_categorical_dtype(first_df_column):
+                all_categories = union_indexes(df[column_name].cat.categories for df in dataframes)
+                # Set new categories on column
+                for df in dataframes:
+                    df[column_name] = df[column_name].cat.set_categories(all_categories)
+            else:
+                raise DTypeError('DTypes of DataFrames to concatenate are not equal: {}'.format([df.dtype
+                                                                                                 for df in dataframes]))
 
     return pd.concat(dataframes)
 
@@ -150,28 +158,70 @@ def integrate_masked_series(dest_series, new_series, mask):
     if str(mask.dtype) == 'boolean':
         mask = mask.fillna(False).astype(bool)
 
-    # If merging with existing Category column, need to align categories
-    if is_categorical_dtype(dest_series):
-        new_series = new_series.astype('category')
-        all_categories = dest_series.cat.categories.union(new_series.cat.categories)
-        dest_series = dest_series.cat.set_categories(all_categories)
-        new_series = new_series.cat.set_categories(all_categories)
+    # Handle dtype mismatches
+    if not is_same_dtype(dest_series, new_series):
+        # If new series is completely null, can cast to destination dtype to re-integrate
+        if new_series.isnull().all():
+            new_series = new_series.astype(dest_series.dtype)
+        else:
+            # Raise error if datetime dtype of column has changed (can cause issues with timezone mismatch)
+            if is_datetime64_any_dtype(dest_series):
+                raise ChangedDataTypeError(
+                    'Datetime datatype of masked values has changed from "{}" to "{}", which may have undesired effect. '
+                    'Removing any conditions may resolve the issue'.format(dest_series.dtype, new_series.dtype))
 
-    if dest_series.dtype != new_series.dtype:
-        # Raise error if datetime dtype of column has changed (can cause issues with timezone mismatch)
-        if is_datetime64_any_dtype(dest_series):
-            raise ChangedDataTypError(
-                'Datetime datatype of masked values has changed from "{}" to "{}", which may have undesired effect. '
-                'Removing any conditions may resolve the issue'.format(dest_series.dtype, new_series.dtype))
-        # TODO: Other type checks..
+            # If merging with existing Category column, need to align categories if different
+            if is_categorical_dtype(dest_series):
+                new_series = new_series.astype('category')
+                all_categories = dest_series.cat.categories.union(new_series.cat.categories)
+                dest_series = dest_series.cat.set_categories(all_categories)
+                new_series = new_series.cat.set_categories(all_categories)
+
+            # TODO: Other type checks/handling..
 
     # Verify new_series length is equal to number of True elements in mask
     if len(new_series.index) != mask.sum():
         raise ValueError('New Series length ({}) does not match boolean mask True value count ({})'.format(len(new_series.index),
                                                                                                            mask.values.sum()))
     # Make copy to avoid making changes to original Series
-    result_series = dest_series.copy()
+    result_series = dest_series.copy(deep=True)
     # Need to use .iloc with mask to not overwrite existing values
     result_series.iloc[mask.values] = new_series
 
+    # Verify Dtype of original series isn't changed
+    if not is_same_dtype(result_series, dest_series):
+        raise ChangedDataTypeError('Integrating "{}" series caused dtype to change from "{}" to "{}"'.format(new_series.dtype,
+                                                                                                  dest_series.dtype,
+                                                                                                  result_series.dtype))
     return result_series
+
+
+def set_column_on_shallow_copy_df(shallow_copy_df, column_name, column_data):
+    """
+    Used to set a column value on a shallow copied DataFrame
+    For some reason, when assigning data to a shallow copy DF column of the same dtype, the column in the
+    original DF is changed too. As a work-around, set to null column first so this doesnt happen
+    :param pd.DataFrame shallow_copy_df:
+    :param str column_name:
+    :param pd.Series column_data:
+    :return:
+    """
+    if column_name in shallow_copy_df.columns and is_same_dtype(shallow_copy_df[column_name], column_data):
+        shallow_copy_df[column_name] = np.nan
+
+    shallow_copy_df[column_name] = column_data
+
+
+def is_same_dtype(series1, series2):
+    """
+    Check if Dtype of two series is same
+    There is a bug/issue when doing equality of a standard dtype with a pandas extension dtype which causes
+    TypeError to be raised, however the equality works if done the other way around
+    :param pd.Series series1:
+    :param pd.Series series2:
+    :return:
+    """
+    try:
+        return series1.dtype == series2.dtype
+    except TypeError:
+        return series2.dtype == series1.dtype

@@ -1,6 +1,6 @@
 from etl_framework.operations import profiled, BinaryDurationToInt
 from etl_framework.operations.pandas import ColumnToDatetime, ColumnMap, ToNullableInteger
-from etl_framework.operations.pandas.record_extractors.asn1_ber.exceptions import MultipleValueError
+from .exceptions import MultipleValueError
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
 from etl_framework.operations.transforms import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, \
     BytesToDateString, BytesToTime, BytesToTimeString, \

@@ -1,10 +1,8 @@
 import logging
 
-import pandas as pd
-
-from etl_framework.exceptions import ETLConfigurationError, EndOfFileError
-from etl_framework.operations.pandas.record_extractors.asn1_ber import ASN1BERDecoder, ASN1BERField
-from etl_framework.operations.pandas.record_extractors.base import BaseDataFrameGenerator, IterableRecordsDataframeGenerator
+from etl_framework.exceptions import EndOfFileError
+from etl_framework.operations.pandas.record_extractors.asn1_ber import ASN1BERDecoder
+from etl_framework.operations.pandas.record_extractors.base import IterableRecordsDataframeGenerator
 
 log = logging.getLogger(__name__)
 
@@ -45,11 +43,9 @@ class ASN1BERRecordExtractor(IterableRecordsDataframeGenerator):
         self.asn_decoder.set_asn_data(file_data)
         try:
             record_number = 1
+            file_pos = 0
             while 1:
-                # Skip to start of next record
-                self.asn_decoder.skip_until_asn_block()
-                # Root node = entire record
-                record = self.asn_decoder.decode_asn_record()
+                record, file_pos = self.asn_decoder.decode_asn_record(file_pos)
                 if record:
                     record[self.RECORDNUMBER_FIELD_NAME] = record_number
 

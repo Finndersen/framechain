@@ -56,15 +56,15 @@ class And(Operation):
         for operation in operations:
             self.add_child_operation(operation)
 
-    def action(self, *args, **kwargs):
+    def action(self, *args):
         # Initialise with first result
-        value = self.run_child_operation(self.child_operations[0], *args, **kwargs)
+        value = self.run_child_operation(self.child_operations[0], *args)
         for operation in self.child_operations[1:]:
             # Exit early if falsey
             if not value:
                 break
 
-            value = value and self.run_child_operation(operation, *args, **kwargs)
+            value = value and self.run_child_operation(operation, *args)
 
         return value
 
@@ -74,15 +74,15 @@ class Or(And):
     Evaluate 'or' statement on results of wrapped operations
     """
 
-    def action(self, *args, **kwargs):
+    def action(self, *args):
         # Initialise with first result
-        value = self.run_child_operation(self.child_operations[0], *args, **kwargs)
+        value = self.run_child_operation(self.child_operations[0], *args)
         for operation in self.child_operations[1:]:
             # Exit early if truthy
             if value:
                 break
 
-            value = value or self.run_child_operation(operation, *args, **kwargs)
+            value = value or self.run_child_operation(operation, *args)
 
         return value
 
@@ -99,8 +99,8 @@ class Not(Operation):
         super().__init__()
         self.operation = self.add_child_operation(operation)
 
-    def action(self, *args, **kwargs):
-        return not self.run_child_operation(self.operation, *args, **kwargs)
+    def action(self, *args):
+        return not self.run_child_operation(self.operation, *args)
 
     def description(self):
         return 'NOT ({})'.format(self.operation)

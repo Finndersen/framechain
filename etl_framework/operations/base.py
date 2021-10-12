@@ -100,20 +100,20 @@ class BaseOperation(object):
         """
         raise exc_type('{} operation: {}'.format(type(self).__name__, message))
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args):
         try:
             # Re-implement @profiled logic here to avoid overhead of additional function call
-            # Otherwise would just do: return profiled(self.action)(*args, **kwargs)
+            # Otherwise would just do: return profiled(self.action)(*args,)
             if self.profiling_enabled and not self.profiling_active:
                 start_time = perf_counter()
                 self.profiling_active = True
-                result = self.action(*args, **kwargs)
+                result = self.action(*args)
                 self._call_count += 1
                 self.profiling_active = False
                 self._cumulative_time += perf_counter() - start_time
                 return result
             else:
-                return self.action(*args, **kwargs)
+                return self.action(*args)
 
         except Exception as exc:
             # Re-raise exception with operation details if not handled
@@ -123,7 +123,7 @@ class BaseOperation(object):
             exc.add_location(self)
             raise exc
 
-    def action(self, *args, **kwargs):
+    def action(self, *args):
         """
         Perform action of operation
         :param args:
@@ -144,7 +144,7 @@ class BaseOperation(object):
             self.child_operations.append(operation)
         return operation
 
-    def run_child_operation(self, operation, *args, **kwargs):
+    def run_child_operation(self, operation, *args):
         """
         Run a child operation and record execution time
         :param Operation operation:
@@ -155,25 +155,33 @@ class BaseOperation(object):
         if self.profiling_enabled:
             pre_cum_time = operation.get_cumulative_time()
             pre_tot_time = operation.get_execute_time()
-            result = operation(*args, **kwargs)
+            result = operation(*args)
             delta_cum_time = operation.get_cumulative_time() - pre_cum_time
             delta_tot_time = operation.get_execute_time() - pre_tot_time
 
             self._child_execution_cumtime += delta_cum_time
 
-            add_profile_stats(self._child_execution_stats, operation.pstat_id, [1, 1, delta_tot_time, delta_cum_time])
+            add_profile_stats(self._child_execution_stats,
+                              operation.pstat_id,
+                              (1, 1, delta_tot_time, delta_cum_time),
+                              primary=False)
 
             return result
         else:
-            return operation(*args, **kwargs)
+            return operation(*args)
 
-    def get_child_operation_stats(self, child_operation):
+    #############################################################################################
+    #   PROFILING
+    #############################################################################################
+    @property
+    def unique_pstat(self):
         """
-        Get execution stats for wrapped operation for this parent operation
-        :param BaseOperation child_operation:
+        Whether each instance of this operation should have its own unique profile data or share it with other instances
+        with same description.
+        By default, compound operations (with any child operations registered) have unique profile stats
         :return:
         """
-        return self._child_execution_stats[child_operation.pstat_id]
+        return bool(self.child_operations)
 
     def enable_profiling(self):
         self.clear_profile_stats()
@@ -197,6 +205,8 @@ class BaseOperation(object):
         result = self(input_val)
 
         profile_data = self.get_profile_data()
+        # Verify profile data
+        verify_profile_data(profile_data)
         # Get temporary filename
         filename = tempfile.NamedTemporaryFile().name
 
@@ -213,32 +223,27 @@ class BaseOperation(object):
         if self._profile_data is None:
             profile_data = {}
             self.add_profile_data(profile_data)
-            # Verify profile data
-            verify_profile_data(profile_data)
             self._profile_data = profile_data
         return self._profile_data
 
-    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None):
+    def add_profile_data(self, profile_data, caller=None):
         """
 
         :param dict profile_data: Current profile data dictionary
-        :param Operation actual_caller: parent calling operation
-        :param Operation proxy_caller: Proxy calling operation, can be different to actual_caller if there are
+        :param Operation caller: parent calling operation
         'transparent' operations in between
         :return:
         """
-        self.add_self_profile_data(profile_data, actual_caller, proxy_caller)
+        self.add_self_profile_data(profile_data, caller)
         # Add profile data for wrapped operations
         for operation in self.child_operations:
             operation.add_profile_data(profile_data,
-                                       actual_caller=self,
-                                       proxy_caller=self)
+                                       caller=self)
 
-    def add_self_profile_data(self, profile_data, actual_caller, proxy_caller):
+    def add_self_profile_data(self, profile_data, caller):
         """
         :param dict profile_data: Current profile data dictionary
-        :param Operation actual_caller: parent calling operation
-        :param Operation proxy_caller: Proxy calling operation, can be different to actual_caller if there are
+        :param Operation caller: parent calling operation
         'transparent' operations in between
         :return:
         """
@@ -247,19 +252,30 @@ class BaseOperation(object):
             return
 
         node_id = self.pstat_id
-        node_stats = self.get_execution_stats()
 
+        # Only add this instance's profile data once
         if not self.added_profile_data:
-            add_profile_stats(profile_data, node_id, node_stats + [{}])
+            add_profile_stats(profile_data,
+                              node_id,
+                              self.get_execution_stats(),
+                              primary=True)
             self.added_profile_data = True
 
         # add profile stats for caller
-        if actual_caller:
-            stats_for_caller = actual_caller.get_child_operation_stats(self)
-
-            if stats_for_caller[0]:
+        if caller:
+            stats_for_caller = caller.get_child_operation_stats(self)
+            if stats_for_caller and stats_for_caller[0]:
                 # Add to existing caller details
-                add_profile_stats(profile_data[node_id][4], proxy_caller.pstat_id, stats_for_caller)
+                add_profile_stats(profile_data[node_id][4], caller.pstat_id, stats_for_caller, primary=False)
+
+    def get_child_operation_stats(self, child_operation):
+        """
+        Get child operation execution stats due to calling by this parent operation
+        Return None if already provided
+        :param BaseOperation child_operation:
+        :return:
+        """
+        return self._child_execution_stats.pop(child_operation.pstat_id, None)
 
     def get_execution_stats(self):
         """
@@ -274,7 +290,7 @@ class BaseOperation(object):
 
         :return:
         """
-        return [self._call_count, self._call_count, self.get_execute_time(), self.get_cumulative_time()]
+        return (self._call_count, self._call_count, self.get_execute_time(), self.get_cumulative_time())
 
     def get_cumulative_time(self):
         """
@@ -297,8 +313,9 @@ class BaseOperation(object):
         (module_name, line_number, function_name)
         :return:
         """
-        desc = self.short_description()
-        return (type(self).__name__, id(type(self)), desc)
+        return (type(self).__name__,
+                id(self) if self.unique_pstat else id(type(self)),
+                self.auto_desc(max_len=30))
 
     def clear_profile_stats(self):
         """
@@ -310,6 +327,10 @@ class BaseOperation(object):
         self._child_execution_stats = {}
         for operation in self.child_operations:
             operation.clear_profile_stats()
+
+    #############################################################################################
+    #   Graphing
+    #############################################################################################
 
     def show_graph(self):
         from pydot import Dot
@@ -328,9 +349,13 @@ class BaseOperation(object):
         """
         from pydot import Node
         # Use random string as node name (so each operation is unique)
-        node = Node(name=randomstring(10), label=self.short_description())
+        node = Node(name=randomstring(10), label=self.auto_desc())
         graph.add_node(node)
         return node, node
+
+    #############################################################################################
+    #   REPRESENTATION
+    #############################################################################################
 
     def short_description(self):
         """
@@ -338,44 +363,54 @@ class BaseOperation(object):
         can get unwieldy
         :return:
         """
-        return self.description()[:177] + '...'
-
-    def description(self):
         return type(self).__name__
 
-    def auto_desc(self):
+    def description(self):
         """
-        Get description of operation. Uses short description if full description is above certain length
+        Full description of operation
+        :return:
+        """
+        return type(self).__name__
+
+    def auto_desc(self, max_len=180):
+        """
+        Get description of operation. Truncates if above certain length
         :return:
         """
         desc = self.description()
-        if len(desc) > 180:
+        if len(desc) > max_len:
             desc = self.short_description()
-
+            if len(desc) > max_len:
+                desc = desc[:max_len-3] + '...'
         return desc
 
     def __repr__(self):
         return self.auto_desc()
 
 
-def add_profile_stats(container, pstat_id, new_stats):
+def add_profile_stats(container, pstat_id, new_stats, primary=True):
     """
     Create new stats entry or add to existing
     :param dict container:
     :param tuple pstat_id:
-    :param list new_stats: stats in form (call_count, call_count, tottime, cumtime)
+    :param tuple new_stats: stats in form (call_count, call_count, tottime, cumtime)
+    :param bool primary: Whether this is adding primary pstat (not for caller)
     :return:
     """
     if pstat_id in container:
         existing_stats = container[pstat_id]
-        for i in range(4):
-            existing_stats[i] += new_stats[i]
+        merged_stats = tuple(existing_stats[i] + new_stats[i] for i in range(4))
+        container[pstat_id] = merged_stats + (existing_stats[4],) if primary else merged_stats
+        # for i in range(4):
+        #     existing_stats[i] += new_stats[i]
     else:
-        container[pstat_id] = new_stats
+        # Make copy of new stats list so original isnt mutated later
+        container[pstat_id] = new_stats + ({},) if primary else new_stats
 
 
 class Operation(BaseOperation):
     """
+    Parent class for most operations.
     Adds operator overloading to base Operation functionality, enabling chaining and construction of logic using
     standard operators, such as:
      - operations to be chained together (output of first goes to input of second) (>>)
@@ -529,10 +564,10 @@ class OperationsWithOperator(Operation):
         assert operator_str in self.OPERATORS, '{} is not a valid operator string'.format(operator_str)
         self.operator_str = operator_str
 
-    def action(self, *args, **kwargs):
+    def action(self, *args):
         # Apply operator on output of two operands
-        return self.OPERATORS[self.operator_str](self.run_child_operation(self.op1, *args, **kwargs),
-                                                 self.run_child_operation(self.op2, *args, **kwargs))
+        return self.OPERATORS[self.operator_str](self.run_child_operation(self.op1, *args),
+                                                 self.run_child_operation(self.op2, *args))
 
     def description(self):
         return '({}) {} ({})'.format(self.op1, self.operator_str, self.op2)
@@ -567,8 +602,8 @@ class InvertedOperation(SingleOperandOperator):
     """Bitwise Invert operator (not for boolean)"""
     operator_str = '~'
 
-    def action(self, *args, **kwargs):
-        return ~self.run_child_operation(self.operation, *args, **kwargs)
+    def action(self, *args):
+        return ~self.run_child_operation(self.operation, *args)
 
     def description(self):
         return '~({})'.format(self.operation)
@@ -578,8 +613,8 @@ class NegatedOperation(SingleOperandOperator):
     """Invert operator"""
     operator_str = '-'
 
-    def action(self, *args, **kwargs):
-        return -self.run_child_operation(self.operation, *args, **kwargs)
+    def action(self, *args):
+        return -self.run_child_operation(self.operation, *args)
 
     def description(self):
         return '-({})'.format(self.operation)
@@ -603,8 +638,8 @@ class SlicedOperation(SingleOperandOperator):
         self.key = key
         super().__init__(op)
 
-    def action(self, *args, **kwargs):
-        op_result = self.run_child_operation(self.operation, *args, **kwargs)
+    def action(self, *args):
+        op_result = self.run_child_operation(self.operation, *args)
 
         # Check and perform Pandas series string slicing
         if isinstance(op_result, pd.Series):
@@ -640,13 +675,20 @@ class ChainedOperations(Operation):
             self.add_child_operation(operation)
 
     def action(self, value):
-        # Return chained output.
+        """
+        Return chained output. Only supports single input value
+        :param value:
+        :return:
+        """
         for operation in self.child_operations:
             value = self.run_child_operation(operation, value)
         return value
 
     def add_to_graph(self, graph):
-        from pydot import Edge
+        from pydot import Edge, Cluster
+        # Create Subgraph/cluster to contain operation chain
+        # subgraph = Cluster(graph_name=randomstring(10), label=self.short_description())
+        # Create sequence of child operation nodes in subgraph
         first_tail, prev_head = self.child_operations[0].add_to_graph(graph)
         for operation in self.child_operations[1:]:
             # Create new node for operation and edge to previous node
@@ -654,30 +696,30 @@ class ChainedOperations(Operation):
             graph.add_edge(Edge(prev_head, tail))
             prev_head = head
 
+        # graph.add_subgraph(subgraph)
         return first_tail, prev_head
 
-    def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None):
-        """
-        Special case where operation chain acts transparently for profile data
-        :param dict profile_data:
-        :param Operation actual_caller:
-        :param Operation proxy_caller:
-        :return:
-        """
-        transparent = isinstance(actual_caller, ChainedOperations)
-
-        # Add profile data for self
-        if not transparent:
-            self.add_self_profile_data(profile_data, actual_caller, proxy_caller)
-        # Add profile data for wrapped operations
-        for operation in self.child_operations:
-            operation.add_profile_data(profile_data,
-                                       actual_caller=self,
-                                       proxy_caller=proxy_caller if transparent else self)
+    # def add_profile_data(self, profile_data, actual_caller=None, proxy_caller=None):
+    #     """
+    #     Special case where operation chain acts transparently for profile data
+    #     :param dict profile_data:
+    #     :param Operation actual_caller:
+    #     :param Operation proxy_caller:
+    #     :return:
+    #     """
+    #     transparent = isinstance(actual_caller, ChainedOperations)
+    #
+    #     # Add profile data for self
+    #     if not transparent:
+    #         self.add_self_profile_data(profile_data, actual_caller, proxy_caller)
+    #     # Add profile data for wrapped operations
+    #     for operation in self.child_operations:
+    #         operation.add_profile_data(profile_data,
+    #                                    actual_caller=self,
+    #                                    proxy_caller=proxy_caller if transparent else self)
 
     def short_description(self):
-        return 'Chain of {} operations #{}'.format(len(self.child_operations),
-                                                   id(self))
+        return 'Chain of {} operations'.format(len(self.child_operations))
 
     def description(self):
         return ' --> '.join('({})'.format(operation) for operation in self.child_operations)
@@ -724,7 +766,7 @@ class Value(Operation):
         super().__init__()
         self.value = value
 
-    def action(self, *args, **kwargs):
+    def action(self, *args):
         # Return static value regardless of of input
         return self.value
 
@@ -752,8 +794,8 @@ class Lambda(Operation):
         if type_translation:
             self.calling_translations = type_translation
 
-    def action(self, *args, **kwargs):
-        return self.func(*args, **kwargs)
+    def action(self, *args):
+        return self.func(*args)
 
     def description(self):
         return self._description

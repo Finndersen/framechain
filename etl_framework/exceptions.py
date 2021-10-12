@@ -48,12 +48,17 @@ class RecordLengthError(ETLRecordError):
 
 
 
-class ChangedDataTypError(ETLError):
+class ChangedDataTypeError(ETLError):
     """
     Error for when operation changes datatype in masked transformation
     """
     pass
 
+class DTypeError(TypeError, ETLError):
+    """
+    Error for mismatching padnas datatype
+    """
+    pass
 
 class ETLFieldError(ETLError):
     """When field data format is not as expected, or missing when mandatory"""

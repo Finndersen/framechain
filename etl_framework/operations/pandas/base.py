@@ -18,7 +18,7 @@ class ColumnOperation(Operation):
     Use 'SelectField' operation or 'OnField' or 'MapFields' wrappers to supply individual column(s) from dataframe
     """
 
-    def action(self, *args, **kwargs):
+    def action(self, *args):
         """
         Take one or more columns or scalar values
         :return: series

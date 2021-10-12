@@ -123,17 +123,15 @@ class SkipHeaders(object):
                 # print('{}: Skipping CMP File Trailer'.format(index))
                 self.in_cmp_file = False
                 index += 42
-                # Should be end of file, can return
-                return index
 
             # Skip newline or blank
-            if data[index] in {0, 10}:
-                # print('{}: Skipping Newline'.format(index))
-                index += 1
-
-            # Exit if no data skipped
-            if index == initial_index:
+            try:
+                while data[index] in {0, 10}:
+                    index += 1
+            except IndexError:
+                # End of file
                 return index
 
-
-
+            # Exit if no more data skipped
+            if index == initial_index:
+                return index

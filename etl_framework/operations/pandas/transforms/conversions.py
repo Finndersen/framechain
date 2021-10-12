@@ -40,3 +40,20 @@ class AsType(ColumnOperation):
         return 'Convert type to {}'.format(self.to_type)
 
 
+class ToList(ColumnOperation):
+    """
+    Convert an input Series to list
+    """
+    def action(self, series):
+        # .values.tolist() is faster than .to_list()
+        return series.values.tolist()
+
+
+class ToArray(ColumnOperation):
+    """
+    Convert an input Series to underlying Numpy array
+    """
+    def action(self, series):
+        return series.values
+
+

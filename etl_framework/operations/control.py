@@ -47,7 +47,8 @@ class If(Operation):
     def add_to_graph(self, graph):
         from pydot import Edge, Node
         # Create start If node
-        if_node, _ = super().add_to_graph(graph)
+        if_node = Node(name=randomstring(10), label=self.short_description())
+        graph.add_node(if_node)
         # create End If node
         end_if_node = Node(name=randomstring(10), label='EndIf')
         graph.add_node(end_if_node)
@@ -87,14 +88,15 @@ class SwitchCase(Operation):
         else:
             return self.run_child_operation(self.default, value)
 
-    def short_description(self):
+    def description(self):
         return 'Switch on value of: \n"{}"'.format(self.key_operation)
 
     def add_to_graph(self, graph):
         from pydot import Edge, Node
         DEFAULT_KEY = '_default_'
         # Create Start switch node
-        start_switch_node, _ = super().add_to_graph(graph)
+        start_switch_node = Node(name=randomstring(10), label=self.auto_desc())
+        graph.add_node(start_switch_node)
         # Create end switch node
         end_switch_node = Node(name=randomstring(10), label='End Switch')
         graph.add_node(end_switch_node)
@@ -168,7 +170,9 @@ class Fork(Operation):
         output_node = Node(name=randomstring(10), label='List of results')
         graph.add_node(output_node)
         # Create Fork node
-        fork_node, _ = super().add_to_graph(graph)
+        fork_node = Node(name=randomstring(10), label=self.short_description())
+        graph.add_node(fork_node)
+        # Add fork operations to graph
         for operation in self.fork_operations:
             start_node, end_node = operation.add_to_graph(graph)
             # Add edge joining Fork node start of fork operation

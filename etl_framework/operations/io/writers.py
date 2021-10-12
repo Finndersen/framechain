@@ -102,6 +102,7 @@ class LocalFileWriter(BaseFileWriter):
             write_path = self.output_path
         else:
             mode = 'w'
+            # Add suffix to filename while file is being written
             write_path = self.output_path + '.tmp'
 
         if isinstance(file_data, str):
@@ -111,7 +112,7 @@ class LocalFileWriter(BaseFileWriter):
             mode += 'b'
             newline = None
         else:
-            self.error(ValueError, 'Input data must be string or bytes')
+            raise ValueError('Input data must be string or bytes')
 
         # Delete existing file if overwrite enabled
         if os.path.isfile(self.output_path):
@@ -133,7 +134,7 @@ class LocalFileWriter(BaseFileWriter):
         try:
             os.rename(write_path, self.output_path)
         except OSError:
-            self.error(FileNotFoundError, 'Failed to write file at: {}'.format(self.output_path))
+            raise FileNotFoundError('Failed to write file at: {}'.format(self.output_path))
 
     def get_return_value(self):
         return self.output_path

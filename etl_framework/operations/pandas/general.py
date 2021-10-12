@@ -204,3 +204,24 @@ class MergeRowValues(Operation):
     def description(self):
         return 'Merge [{}] row values using function: "{}"'.format(', '.join(self.field_names),
                                                                    self.merge_function)
+
+
+class Copy(Operation):
+    """
+    Return copy of input DF or Series
+    """
+    def __init__(self, deep=False):
+        """
+
+        :param deep:
+        """
+        super().__init__()
+        self.deep = deep
+
+    def action(self, vector):
+        """
+
+        :param pd.DataFrame or pd.Series vector:
+        :return:
+        """
+        return vector.copy(deep=self.deep)
