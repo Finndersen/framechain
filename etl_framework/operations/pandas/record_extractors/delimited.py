@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+from etl_framework.exceptions import OperationConfigurationError
 from etl_framework.operations.io import TextReader
 from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, \
     TimestampFieldMixin, IntegerFieldMixin
@@ -9,8 +10,7 @@ from etl_framework.operations.transforms import BytesToString
 
 class DelimitedRecordExtractor(BaseDataFrameGenerator):
     """
-    Extract records from data file with fields separated by delimiter character
-    Wrapper around pandas.read_csv
+    Extract records from data file with fields separated by delimiter character. Wrapper for pandas.read_csv()
     Input is file text or bytes content or file reader object in text mode
     If file contains headers, field header_name attribute is used to match field
     Otherwise, Fields must provide
@@ -44,7 +44,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
 
     def create_dataframe(self, file_data):
         """
-        Create dataframe from CSV data file. (Does not support record chunking)
+        Create dataframe from CSV data file.
         Input can be file reader object (most efficient), or string or bytes data
         :param file_data:
         :return:
@@ -62,8 +62,8 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         extract_fields = [field for field in self.fields if field.extract]
 
         # Get mapping of field header names or column IDs to dtype definitions
-        dtypes = {field.column_id: field.dtype
-                  for field in extract_fields if field.dtype}
+        dtypes = {field.column_id: field.read_dtype
+                  for field in extract_fields if field.read_dtype}
         # Get mapping of field header names or column IDs to converter definitions
         converters = {field.column_id: field.convert_value
                       for field in extract_fields if field.value_converter}
@@ -94,17 +94,32 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
 class CSVField(InputField):
     """
     Object representing field in delimited (e.g. CSV) file
+    If CSV file does not contain headers, need to specify column_id to map field to column position
+    Contains extra configuration for field-specific logic in pd.read_csv()
+    - value_converter will be provided as converter function for this field
+    - data will be coerced to read_dtype before column conversion (defaults to final field dtype)
+    - cannot specify both value_converter and read_type (converter takes precendence)
     """
 
-    def __init__(self, name, column_id=None, **kwargs):
+    def __init__(self, name, column_id=None, dtype=None, read_dtype=None, value_converter=None, **kwargs):
         """
 
         :param str name: Name of field
         :param int/str column_id: 0-indexed Id of column for this field (for when file does not contain headers)
         or Name of field in file header (for when file contains headers) - defaults to field name
+        :param dtype: Desired final dtype of field after column conversion
+        :param read_dtype: Dtype to use when reading CSV (before Column Conversion)
         """
         self.column_id = name if column_id is None else column_id
-        super().__init__(name, **kwargs)
+        if value_converter:
+            if read_dtype:
+                raise OperationConfigurationError(
+                    'Do not specify both value_converter and read_dtype for CSVField: "{}"'.format(name))
+        elif read_dtype is None:
+            read_dtype = dtype
+        self.read_dtype = read_dtype
+
+        super().__init__(name, dtype=dtype, value_converter=value_converter, **kwargs)
 
 
 class StringField(CSVField):
@@ -126,9 +141,9 @@ class IntegerField(IntegerFieldMixin, CSVField):
 
 class TimestampField(TimestampFieldMixin, CSVField):
     """
-    Field which converts values to Timestamp
+    Field which converts values to Timestamp. Read values as string for conversion
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args,
-                         dtype=object, **kwargs)
+                         read_dtype=object, **kwargs)

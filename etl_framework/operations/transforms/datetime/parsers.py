@@ -3,7 +3,7 @@ Operations for parsing some kind of input (usually text) to datetime object
 """
 import re
 from datetime import time, date, datetime, timedelta, timezone
-from etl_framework.exceptions import ConverterConfigurationError, ETLError, ETLConfigurationError
+from etl_framework.exceptions import ConverterConfigurationError, ETLError, OperationConfigurationError
 from etl_framework.operations import Operation
 
 
@@ -27,7 +27,7 @@ def StringToDatetime(format):
     else:
         try:
             return RegexDateTimeParser(format)
-        except ETLConfigurationError:
+        except OperationConfigurationError:
             return BasicDatetimeParser(format)
 
 
@@ -70,7 +70,7 @@ class RegexDateTimeParser(Operation):
         self.has_time = 'hour' in group_names
         self.has_utcoffset = all(x in group_names for x in ['offset_hours', 'offset_minutes', 'offset_sign'])
         if not (self.has_date or self.has_time):
-            raise ETLConfigurationError('Regex pattern: {} does not contain Date or Time named groups'.format(regex_pattern))
+            raise OperationConfigurationError('Regex pattern: {} does not contain Date or Time named groups'.format(regex_pattern))
 
     def action(self, timestamp_str):
         """

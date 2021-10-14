@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from etl_framework.exceptions import ETLConfigurationError, MandatoryFieldError
+from etl_framework.exceptions import OperationConfigurationError, MandatoryFieldError
 from etl_framework.operations import BaseOperation, Operation, profiled, Pass
 from etl_framework.operations.pandas.transforms import ToNullableInteger, SetColumnTimezone, ColumnToDatetime, AsType, \
     ToNumeric
@@ -46,7 +46,7 @@ class BaseDataFrameGenerator(Operation):
                 raise TypeError('Fields should be subclasses of InputField')
 
             if field.name in field_names:
-                raise ETLConfigurationError(
+                raise OperationConfigurationError(
                     'Input field: "{}" has already been defined for {}'.format(field.name, type(self).__name__))
             field_names.add(field.name)
 

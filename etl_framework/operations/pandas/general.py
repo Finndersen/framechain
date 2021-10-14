@@ -2,7 +2,7 @@ import itertools
 
 import pandas as pd
 
-from etl_framework.exceptions import ETLConfigurationError
+from etl_framework.exceptions import OperationConfigurationError
 from etl_framework.operations import Operation
 from etl_framework.operations.general import Map
 from etl_framework.operations.pandas.base import ColumnOperation
@@ -24,7 +24,7 @@ class Field(Operation):
         """
         super().__init__()
         if not isinstance(field_name, str):
-            self.error(ETLConfigurationError, 'Field name must be string')
+            self.error(OperationConfigurationError, 'Field name must be string')
         self.field_name = field_name
 
     def action(self, multiple_fields):

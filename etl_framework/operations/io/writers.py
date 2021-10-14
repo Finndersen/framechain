@@ -85,7 +85,7 @@ class LocalFileWriter(BaseFileWriter):
         self.newline = newline
         # Guess compression setting based on filename
         if compress is None:
-            compress = output_path.endswith('.gz')
+            compress = output_path.endswith(('.gz', '.gzip'))
         self.compress = compress
         self.append = append
         self.overwrite = overwrite

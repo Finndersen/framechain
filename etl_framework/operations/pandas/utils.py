@@ -1,10 +1,12 @@
-import pandas as pd
-import numpy as np
-from pandas.api.types import is_object_dtype, is_string_dtype, is_categorical_dtype, is_datetime64_any_dtype, is_bool_dtype
-from operator import and_
 from functools import reduce
+from operator import and_
 
-from etl_framework.exceptions import ChangedDataTypeError, DTypeError
+import numpy as np
+import pandas as pd
+from pandas.api.types import is_object_dtype, is_string_dtype, is_categorical_dtype, is_datetime64_any_dtype, \
+    is_bool_dtype
+
+from etl_framework.operations.pandas.exceptions import MaskMismatchError, ChangedDataTypeError, DTypeError
 
 
 def optimise_dataframe(dataframe):
@@ -62,7 +64,7 @@ def optimise_series(series):
                     series.dtype,
                     downcast_series.dtype,
                     downcast_type,
-                    (1-downcast_mem/mem_usage)*100
+                    (1 - downcast_mem / mem_usage) * 100
                 ))
                 series = downcast_series
                 mem_usage = downcast_mem
@@ -77,7 +79,7 @@ def optimise_series(series):
             series = pd.to_datetime(series)
 
             optimisations.append('Convert to datetime64 ({:.2f}% reduction)'.format(
-                (1-series.memory_usage(deep=True)/mem_usage)*100
+                (1 - series.memory_usage(deep=True) / mem_usage) * 100
             ))
             mem_usage = series.memory_usage(deep=True)
         except (ValueError, OverflowError):
@@ -86,7 +88,7 @@ def optimise_series(series):
 
     # See if converting to categorical type saves memory
     category_series = series.astype('category')
-    category_mem_saving = (1-category_series.memory_usage(deep=True)/mem_usage)*100
+    category_mem_saving = (1 - category_series.memory_usage(deep=True) / mem_usage) * 100
     # Suggest if greater than 20% saving
     if category_mem_saving > 20:
         optimisations.append('Convert from {} to Category type ({:.2f}% reduction)'.format(series.dtype,
@@ -109,33 +111,41 @@ def union_indexes(indexes):
     return merged_index
 
 
-def concat_dataframes(dataframes):
+def concat_dataframes(dataframes, reset_index=True):
     """
     Concatenate a list of dataframes, aligning categorical column categories first to preserve dtype
-    :param dataframes:
+    :param list dataframes: List of dataframes
+    :param bool reset_index: Whether to reset index on merged dataframe
     :return:
     """
     # Shortcut for single DF
     if len(dataframes) == 1:
-        return dataframes[0]
+        merged = dataframes[0]
+    else:
+        # Align categories for common categorical columns
+        common_columns = reduce(and_, (set(df.columns) for df in dataframes))
+        for column_name in common_columns:
+            first_df_column = dataframes[0][column_name]
+            # Check for dtype mismatches
+            if not all(is_same_dtype(df[column_name], first_df_column) for df in dataframes[1:]):
+                # Align categories of categorical DTYPE
+                if is_categorical_dtype(first_df_column):
+                    all_categories = union_indexes(df[column_name].cat.categories for df in dataframes)
+                    # Set new categories on column
+                    for df in dataframes:
+                        df[column_name] = df[column_name].cat.set_categories(all_categories)
+                else:
+                    raise DTypeError(
+                        'DTypes of "{}" columns to concatenate are not equal: {}'.format(column_name,
+                                                                                     [df[column_name].dtype
+                                                                                      for df in dataframes]))
 
-    # Align categories for common categorical columns
-    common_columns = reduce(and_, (set(df.columns) for df in dataframes))
-    for column_name in common_columns:
-        first_df_column = dataframes[0][column_name]
-        # Check for dtype mismatches
-        if any(df[column_name].dtype != first_df_column.dtype for df in dataframes[1:]):
-            # Align categories of categorical DTYPE
-            if is_categorical_dtype(first_df_column):
-                all_categories = union_indexes(df[column_name].cat.categories for df in dataframes)
-                # Set new categories on column
-                for df in dataframes:
-                    df[column_name] = df[column_name].cat.set_categories(all_categories)
-            else:
-                raise DTypeError('DTypes of DataFrames to concatenate are not equal: {}'.format([df.dtype
-                                                                                                 for df in dataframes]))
+        merged = pd.concat(dataframes)
 
-    return pd.concat(dataframes)
+    if reset_index:
+        merged = merged.reset_index(drop=True)
+
+    return merged
 
 
 def integrate_masked_series(dest_series, new_series, mask):
@@ -146,17 +156,33 @@ def integrate_masked_series(dest_series, new_series, mask):
 
     :param pd.Series dest_series: Destination series to merge new content into
     :param pd.Series new_series: Series containing new data to integrate
-    :param pd.Series mask: Boolean array mask for merging new series data
+    :param pd.Series, boolean array mask: Boolean array mask for merging new series data
     :return: pd.Series: New merged series
     """
+    # Attempt to convert mask to Boolean series if not already
+    if not isinstance(mask, pd.Series):
+        mask = pd.Series(mask)
+
     # Mask must be boolean series
-    if not (isinstance(mask, pd.Series) and is_bool_dtype(mask)):
-        raise TypeError('Mask must be a boolean Series, not {}'.format(mask.dtype if isinstance(mask, pd.Series)
-                                                                       else type(mask)))
+    if not is_bool_dtype(mask):
+        raise TypeError('Mask must be a boolean Series, not {}'.format(mask.dtype))
 
     # Convert nullable-boolean type mask to standard boolean, because doesnt work when setting (nulls become falsey)
     if str(mask.dtype) == 'boolean':
         mask = mask.fillna(False).astype(bool)
+
+    # Verify new_series length is equal to number of True elements in mask
+    if len(new_series.index) != mask.sum():
+        raise MaskMismatchError(
+            'New Series length ({}) does not match boolean mask True value count ({})'.format(len(new_series.index),
+                                                                                              mask.values.sum()))
+
+    # Verify mask length is equal to destination series length
+    if len(dest_series.index) != len(mask.index):
+        raise MaskMismatchError(
+            "Boolean Series mask must does not have same length ({}) as destination series ({})".format(len(mask.index),
+                                                                                                        len(
+                                                                                                            dest_series.index)))
 
     # Handle dtype mismatches
     if not is_same_dtype(dest_series, new_series):
@@ -179,10 +205,6 @@ def integrate_masked_series(dest_series, new_series, mask):
 
             # TODO: Other type checks/handling..
 
-    # Verify new_series length is equal to number of True elements in mask
-    if len(new_series.index) != mask.sum():
-        raise ValueError('New Series length ({}) does not match boolean mask True value count ({})'.format(len(new_series.index),
-                                                                                                           mask.values.sum()))
     # Make copy to avoid making changes to original Series
     result_series = dest_series.copy(deep=True)
     # Need to use .iloc with mask to not overwrite existing values
@@ -190,9 +212,10 @@ def integrate_masked_series(dest_series, new_series, mask):
 
     # Verify Dtype of original series isn't changed
     if not is_same_dtype(result_series, dest_series):
-        raise ChangedDataTypeError('Integrating "{}" series caused dtype to change from "{}" to "{}"'.format(new_series.dtype,
-                                                                                                  dest_series.dtype,
-                                                                                                  result_series.dtype))
+        raise ChangedDataTypeError(
+            'Integrating "{}" series caused dtype to change from "{}" to "{}"'.format(new_series.dtype,
+                                                                                      dest_series.dtype,
+                                                                                      result_series.dtype))
     return result_series
 
 
@@ -200,7 +223,8 @@ def set_column_on_shallow_copy_df(shallow_copy_df, column_name, column_data):
     """
     Used to set a column value on a shallow copied DataFrame
     For some reason, when assigning data to a shallow copy DF column of the same dtype, the column in the
-    original DF is changed too. As a work-around, set to null column first so this doesnt happen
+    original DF is changed too. As a work-around, set to null column first so this doesnt happen.
+    TODO: Should be fixed in pandas v1.4.0
     :param pd.DataFrame shallow_copy_df:
     :param str column_name:
     :param pd.Series column_data:
@@ -217,6 +241,7 @@ def is_same_dtype(series1, series2):
     Check if Dtype of two series is same
     There is a bug/issue when doing equality of a standard dtype with a pandas extension dtype which causes
     TypeError to be raised, however the equality works if done the other way around
+    TODO: Fixed in  Numpy 1.21.1
     :param pd.Series series1:
     :param pd.Series series2:
     :return:

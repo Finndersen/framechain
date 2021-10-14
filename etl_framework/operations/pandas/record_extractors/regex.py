@@ -1,6 +1,6 @@
 import re, logging, io
 import pandas as pd
-from etl_framework.exceptions import ETLError, ETLConfigurationError
+from etl_framework.exceptions import ETLError, OperationConfigurationError
 from etl_framework.operations.pandas.record_extractors.base import BaseDataFrameGenerator, InputField, IntegerFieldMixin, TimestampFieldMixin
 
 log = logging.getLogger(__name__)
@@ -32,8 +32,8 @@ class RegexRecordExtractor(BaseDataFrameGenerator):
         for field in fields:
             if field.group_index is None:
                 if field.group_name not in self.regex_pattern.groupindex:
-                    self.error(ETLConfigurationError, 'Field {} does not have a named regex group in pattern: {}'.format(field,
-                                                                                                                         pattern))
+                    self.error(OperationConfigurationError, 'Field {} does not have a named regex group in pattern: {}'.format(field,
+                                                                                                                               pattern))
                 field.group_index = self.regex_pattern.groupindex[field.group_name] - 1
         super().__init__(fields)
 

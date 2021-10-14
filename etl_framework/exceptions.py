@@ -1,12 +1,15 @@
 class ETLError(Exception):
-    """Base class for all custom Ingest errors"""
+    """Base class for all custom ETL Framework errors"""
     pass
+
 
 class FileAlreadyExistsError(ETLError):
     pass
 
-class ETLConfigurationError(ETLError):
+
+class OperationConfigurationError(ETLError):
     pass
+
 
 class UnsupportedOperatorError(ETLError):
     """
@@ -14,9 +17,11 @@ class UnsupportedOperatorError(ETLError):
     """
     pass
 
+
 class EndOfFileError(ETLError):
     """Raised when end of file has been reached"""
     pass
+
 
 class MissingFieldError(ETLError):
     """Error for when an expected field is missing"""
@@ -27,38 +32,30 @@ class ValidationError(ETLError):
     """Exception class used to indicate a field value validation has failed"""
     pass
 
+
 class RecordSkipError(ETLError):
     """Exception class for when validation fails and record should be skipped"""
     pass
+
 
 class FieldDQError(ETLError):
     """Exception class for when validation fails and error should be raised"""
     pass
 
+
 class ETLRecordError(ETLError):
     """Base exception for record-level errors"""
     pass
 
+
 class ConverterConfigurationError(ETLError):
     pass
+
 
 class RecordLengthError(ETLRecordError):
     """When field data format is not as expected, or missing when mandatory"""
     pass
 
-
-
-class ChangedDataTypeError(ETLError):
-    """
-    Error for when operation changes datatype in masked transformation
-    """
-    pass
-
-class DTypeError(TypeError, ETLError):
-    """
-    Error for mismatching padnas datatype
-    """
-    pass
 
 class ETLFieldError(ETLError):
     """When field data format is not as expected, or missing when mandatory"""

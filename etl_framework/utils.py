@@ -9,7 +9,7 @@ from datetime import timedelta, tzinfo
 import pytz
 from pytz.tzinfo import StaticTzInfo, BaseTzInfo
 
-from .exceptions import ETLConfigurationError
+from .exceptions import OperationConfigurationError
 
 
 class LogDuration(object):
@@ -85,7 +85,7 @@ class ConfigurableClass(object):
         pass
 
     def configuration_error(self, message):
-        raise ETLConfigurationError('{}: {}'.format(type(self).__name__, message))
+        raise OperationConfigurationError('{}: {}'.format(type(self).__name__, message))
 
 
 def randomstring(length):
@@ -176,6 +176,8 @@ def chunks(iterator, n):
         for chunk in [iterator]:
             yield chunk
     else:
+        # Convert to iterator otherwise first element will be duplicated
+        iterator = iter(iterator)
         for first in iterator:  # take one item out (exits loop if `iterator` is empty)
-            rest_of_chunk = itertools.islice(iterator, 0, n - 1)
+            rest_of_chunk = itertools.islice(iterator, 0, n - 1)    # n - 1 because first element already taken
             yield itertools.chain([first], rest_of_chunk)  # concatenate the first item back

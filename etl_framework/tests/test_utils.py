@@ -2,7 +2,7 @@ from unittest import TestCase
 from datetime import timedelta, timezone, datetime
 import pytz
 
-from etl_framework.utils import StaticOffsetTz, convert_timezone
+from etl_framework.utils import StaticOffsetTz, convert_timezone, chunks
 
 
 class UtilsTests(TestCase):
@@ -36,3 +36,30 @@ class UtilsTests(TestCase):
             self.assertTrue(hasattr(output, 'localize'))
             self.assertEqual(output.utcoffset(dt), expected_output.utcoffset(dt))
             self.assertEqual(output.tzname(dt), expected_output.tzname(dt))
+
+    def test_chunks(self):
+        """
+        Test chunks function
+        :return:
+        """
+        data = (1,2,3,4,5,6,7,8,9,10)
+
+        # Test non-iterator with small chunk and leftover
+        chunk_iter = chunks(data, 3)
+        self.assertEqual(tuple(next(chunk_iter)), (1,2,3))
+        self.assertEqual(tuple(next(chunk_iter)), (4, 5, 6))
+        self.assertEqual(tuple(next(chunk_iter)), (7, 8, 9))
+        self.assertEqual(tuple(next(chunk_iter)), (10, ))
+
+        # Test iterator with large chunk and no leftover
+        chunk_iter = chunks(iter(data), 5)
+        self.assertEqual(tuple(next(chunk_iter)), (1,2,3, 4, 5))
+        self.assertEqual(tuple(next(chunk_iter)), (6, 7, 8, 9, 10))
+
+        # Test chunksize of None (should return all data)
+        self.assertEqual(tuple(next(chunks(data, None))), data)
+
+        # Test chunksize larger than data size (should return all data)
+        self.assertEqual(tuple(next(chunks(data, 15))), data)
+
+

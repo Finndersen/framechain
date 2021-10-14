@@ -3,7 +3,7 @@ from collections import defaultdict
 from pprint import pprint
 
 from .fields import ASN1BERField
-from .exceptions import ASNDecodeError, SkipRecordError, EndOfFileError, ETLConfigurationError
+from .exceptions import ASNDecodeError, SkipRecordError, EndOfFileError, OperationConfigurationError
 
 log = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ class ASN1BERDecoder(object):
             if isinstance(field.asn_ids, dict):
                 for record_type_name in field.asn_ids:
                     if record_type_name not in record_type_names:
-                        raise ETLConfigurationError(
+                        raise OperationConfigurationError(
                             'Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
 
             # Validate no duplicate field names
@@ -128,7 +128,7 @@ class ASN1BERDecoder(object):
 
             # Validate no field has same name as recordtype field name
             if field.name == self.RECORDTYPE_FIELD_NAME:
-                raise ETLConfigurationError(
+                raise OperationConfigurationError(
                     'ASN1 record schema defined with field name same as recordtype field name: {}'.format(
                         self.RECORDTYPE_FIELD_NAME))
 
