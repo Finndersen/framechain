@@ -1,19 +1,20 @@
 """
 Operations which are used to help construct more complex field-based transforms with masking capability
 """
-import numpy as np
 import pandas as pd
+from pandas.core.dtypes.common import is_list_like
 
 pd.set_option('mode.chained_assignment', 'raise')  # Raise SetWithCopyError instead of warning
 from etl_framework.operations import Operation
-from etl_framework.operations.pandas import Field, integrate_masked_series, set_column_on_shallow_copy_df
+from etl_framework.operations.pandas import Field, integrate_masked_series, set_column_on_df
 from etl_framework.utils import randomstring
 
 
 class SetColumn(Operation):
     """
     Set a column/field values using a transformation operation. Creates new column if doesnt already exist in DataFrame
-    Can provide a conditional operation which is used to create a mask
+    Transformation operation takes DataFrame as input and returns a Series as output (with same length as input DF)
+    The index on the resultant Series is reset/ignored
     """
 
     def __init__(self, column_name, transform):
@@ -32,15 +33,12 @@ class SetColumn(Operation):
         :return:
         """
         # Perform transformation on dataframe
-        output_series = self.run_child_operation(self.operation, dataframe)
-        if not isinstance(output_series, pd.Series):
-            self.error(ValueError,
-                       'Transform: {} returns: "{}", not return a Series'.format(self.operation, type(output_series)))
+        output_series = self.operation(dataframe)
 
         # Make copy so changes arent made to original DF
         new_dataframe = dataframe.copy(deep=False)
 
-        set_column_on_shallow_copy_df(new_dataframe, self.column_name, output_series)
+        set_column_on_df(new_dataframe, self.column_name, output_series)
 
         return new_dataframe
 
@@ -69,7 +67,7 @@ def ConvertColumn(column_name, column_transform):
     return SetColumn(column_name, Field(column_name) >> column_transform)
 
 
-class ApplyWithColumns(Operation):
+class UseColumns(Operation):
     """
     Select a subset of columns from a DataFrame to apply an operation to, and then re-integrate result back into
     original DF
@@ -105,7 +103,7 @@ class ApplyWithColumns(Operation):
 
         # Integrate result columns back into dataframe (including any extra columns added)
         for column_name in result_subset_df.columns:
-            set_column_on_shallow_copy_df(full_dataframe, column_name, result_subset_df[column_name])
+            set_column_on_df(full_dataframe, column_name, result_subset_df[column_name])
 
         # Remove any deleted columns
         if self.propagate_dropped_columns:
@@ -133,7 +131,7 @@ class SetField(Operation):
         self.field = field
 
     def action(self, row):
-        row[self.field] = self.run_child_operation(self.transform, row)
+        row[self.field] = self.transform(row)
         return row
 
     def description(self):
@@ -158,14 +156,25 @@ class Apply(Operation):
     Apply(transform_operation) >> ToList() >> ConstructDataFrame(columns=COLUMNS_OF_OUTPUT)
     """
 
-    def __init__(self, operation, error_if_field_added=True):
+    def __init__(self, operation, error_if_field_added=True, fast=False):
         """
         :param operation: Operation to apply to each element of vector
-        :param bool error_if_field_added: Whether to raise error if result is DataFrame with additional field added. Can
-        disable if result DF is constructed from arrays instead of adding extra fields to Series.
+        :param bool error_if_field_added: Whether to raise error if result is DataFrame with additional field added.
+        (Due to poor performance, should initialise blank placeholder column first) Can disable if result DF is
+        constructed from arrays instead of adding extra fields to Series.
+        :param bool fast: Whether to skip wrapping provided function as an operation for less overheads and better
+        performance (does nothing if Operation instance provided)
         """
         super().__init__()
-        self.operation = self.add_child_operation(operation)
+        # Don't wrap and register provided function in fast mode (to avoid overheads)
+        if fast and not isinstance(operation, Operation):
+            self.operation = operation
+        else:
+            self.operation = self.add_child_operation(operation)
+
+        if is_list_like(self.operation):
+            raise TypeError('Do not provide list-like value to Apply: {}'.format(self.operation))
+
         self.error_if_field_added = error_if_field_added
 
     def action(self, df_or_series):
@@ -173,9 +182,9 @@ class Apply(Operation):
         :param df_or_series: Dataframe or Column (series)
         :return:
         """
+        # Apply to DataFrame
         if isinstance(df_or_series, pd.DataFrame):
-            result = df_or_series.apply(lambda row: self.run_child_operation(self.operation, row),
-                                        axis=1)
+            result = df_or_series.apply(self.operation, axis=1)
             # Raise error if output is DF with new columns added (poor performance)
             if self.error_if_field_added and isinstance(result, pd.DataFrame) and any(column not in df_or_series.columns
                                                                                       for column in result.columns):
@@ -183,8 +192,9 @@ class Apply(Operation):
                                 'Best to initialise the field as a blank column beforehand'.format(self.operation))
 
             return result
+        # Apply to Series
         elif isinstance(df_or_series, pd.Series):
-            return df_or_series.apply(lambda value: self.run_child_operation(self.operation, value))
+            return df_or_series.apply(self.operation)
         else:
             self.error(TypeError, 'Input should be DataFrame or Series')
 
@@ -220,7 +230,7 @@ class Conditional(Operation):
         :return:
         """
         # Get mask using condition (should be read-only operation)
-        mask = self.run_child_operation(self.condition, df_or_series)
+        mask = self.condition(df_or_series)
 
         # Validate mask
         if not pd.api.types.is_bool_dtype(mask):
@@ -248,7 +258,7 @@ class Conditional(Operation):
         :param pd.Series mask:
         :return: resultant DF or Series
         """
-        # Provide masked data to operation (.iloc[mask.values] is a bit faster than .loc[mask]
+        # Provide masked data to operation (.iloc[mask.values] is a bit faster than .loc[mask])
         transformed_output = self.run_child_operation(operation,
                                                       df_or_series.iloc[mask.values])
 
@@ -263,13 +273,13 @@ class Conditional(Operation):
             # Integrate values back into original Dataframe
             for column_name in transformed_output.columns:
                 # Integrate with existing column (or null series if new column) using mask
-                set_column_on_shallow_copy_df(
+                set_column_on_df(
                     result_df,
                     column_name,
                     integrate_masked_series(
                         result_df[column_name] if column_name in result_df.columns else
                         # Create empty null Series to integrate with if column does not already exist
-                        pd.Series(index=np.arange(0, len(result_df.index)),
+                        pd.Series(index=result_df.index,
                                   dtype=transformed_output[column_name].dtype),
                         transformed_output[column_name],
                         mask))
@@ -277,11 +287,6 @@ class Conditional(Operation):
             return result_df
 
         elif isinstance(df_or_series, pd.Series):
-            # Verify output is also Series
-            if not isinstance(transformed_output, pd.Series):
-                raise TypeError(
-                    'Expected Series output from Series input, but got: {}'.format(type(transformed_output)))
-
             # Integrate values back into original Series
             series = integrate_masked_series(df_or_series,
                                              transformed_output,
@@ -311,6 +316,40 @@ class Conditional(Operation):
         return 'Apply operation on input with mask condition ({})'.format(self.condition)
 
 
+class Where(Operation):
+    """
+    Implements conditional logic
+    Created for test purposes - better to use Conditional which is more flexible and better performance
+    """
+    def __init__(self, condition, true_operation, false_operation):
+        """
+
+        :param condition: Callable which takes Dataframe or column and returns boolean series mask
+        :param true_operation: Operation to pass masked column to
+        :param false_operation: Optional operation to apply to data from inverted mask
+        """
+        super().__init__()
+        self.true_operation = self.add_child_operation(true_operation)
+        self.condition = self.add_child_operation(condition)
+        self.false_operation = self.add_child_operation(false_operation)
+
+    def action(self, df_or_series):
+        """
+
+        :param pd.DataFrame df_or_series:
+        :return:
+        """
+        mask = self.condition(df_or_series)
+        # Perform mask validation
+
+        true_values = self.true_operation(df_or_series)
+        # Perform validation
+
+        false_values = self.false_operation(df_or_series)
+
+        return true_values.where(mask, false_values)
+
+
 class ConstructDataFrame(Operation):
     """
     Construct a DataFrame from input data
@@ -327,3 +366,21 @@ class ConstructDataFrame(Operation):
     def action(self, data):
         return pd.DataFrame(data=data,
                             **self.init_kwargs)
+
+
+class ConstructSeries(Operation):
+    """
+    Construct a Series from input data
+    """
+
+    def __init__(self, **init_kwargs):
+        """
+
+        :param init_kwargs: Keyword arguments for Series initialisation
+        """
+        super().__init__()
+        self.init_kwargs = init_kwargs
+
+    def action(self, data):
+        return pd.Series(data=data,
+                         **self.init_kwargs)

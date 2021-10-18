@@ -6,7 +6,8 @@ import pandas as pd
 from pandas.api.types import is_object_dtype, is_string_dtype, is_categorical_dtype, is_datetime64_any_dtype, \
     is_bool_dtype
 
-from etl_framework.operations.pandas.exceptions import MaskMismatchError, ChangedDataTypeError, DTypeError
+from etl_framework.operations.pandas.exceptions import MaskMismatchError, ChangedDataTypeError, DTypeError, \
+    LengthMismatchError
 
 
 def optimise_dataframe(dataframe):
@@ -151,7 +152,7 @@ def concat_dataframes(dataframes, reset_index=True):
 def integrate_masked_series(dest_series, new_series, mask):
     """
     Integrate one series into another using a boolean mask
-    If mask is provided, should have length equal to dest_series and length of new_series should be equal to number of
+    Mask should have length equal to dest_series and length of new_series should be equal to number of
     True elements in mask
 
     :param pd.Series dest_series: Destination series to merge new content into
@@ -159,6 +160,10 @@ def integrate_masked_series(dest_series, new_series, mask):
     :param pd.Series, boolean array mask: Boolean array mask for merging new series data
     :return: pd.Series: New merged series
     """
+    # Verify data is Series
+    if not isinstance(new_series, pd.Series):
+        raise TypeError('Expected Series data but got: {}'.format(type(new_series)))
+
     # Attempt to convert mask to Boolean series if not already
     if not isinstance(mask, pd.Series):
         mask = pd.Series(mask)
@@ -179,7 +184,7 @@ def integrate_masked_series(dest_series, new_series, mask):
 
     # Verify mask length is equal to destination series length
     if len(dest_series.index) != len(mask.index):
-        raise MaskMismatchError(
+        raise LengthMismatchError(
             "Boolean Series mask must does not have same length ({}) as destination series ({})".format(len(mask.index),
                                                                                                         len(
                                                                                                             dest_series.index)))
@@ -207,7 +212,9 @@ def integrate_masked_series(dest_series, new_series, mask):
 
     # Make copy to avoid making changes to original Series
     result_series = dest_series.copy(deep=True)
-    # Need to use .iloc with mask to not overwrite existing values
+    # Set index on new series data so it is aligned with existing (TODO: Dont need to do this for newer pandas)
+    new_series.index = result_series.index[mask]
+    # Merge into destination series using .iloc with mask to not overwrite existing values
     result_series.iloc[mask.values] = new_series
 
     # Verify Dtype of original series isn't changed
@@ -219,21 +226,41 @@ def integrate_masked_series(dest_series, new_series, mask):
     return result_series
 
 
-def set_column_on_shallow_copy_df(shallow_copy_df, column_name, column_data):
+def set_column_on_df(dataframe, column_name, column_data):
     """
-    Used to set a column value on a shallow copied DataFrame
-    For some reason, when assigning data to a shallow copy DF column of the same dtype, the column in the
-    original DF is changed too. As a work-around, set to null column first so this doesnt happen.
+    Used to set a column value on a DataFrame
+    Column data must be series of same length as DataFrame, and will have index replaced with DF index so values are
+    integrated as expected
+
+    There is bug that causes data to be mutated in-place when setting new column of same dtype
+    (https://github.com/pandas-dev/pandas/pull/43406)
+    This causes update to also be reflected on any shallow copy parents, which is undesirable.
     TODO: Should be fixed in pandas v1.4.0
-    :param pd.DataFrame shallow_copy_df:
+
+    :param pd.DataFrame dataframe:
     :param str column_name:
     :param pd.Series column_data:
     :return:
     """
-    if column_name in shallow_copy_df.columns and is_same_dtype(shallow_copy_df[column_name], column_data):
-        shallow_copy_df[column_name] = np.nan
 
-    shallow_copy_df[column_name] = column_data
+    if not isinstance(column_data, pd.Series):
+        raise TypeError('Expected a Series, not "{}"'.format(type(column_data)))
+
+    # Verify data is same length as destination DF
+    if len(column_data.index) != len(dataframe.index):
+        raise LengthMismatchError('Length of result Series ({}) is not the same as the destination DataFrame ({})'.format(
+            len(column_data.index),
+            len(dataframe.index)))
+
+    # Clear existing column with same Dtype to avoid operating in-place
+    # (could remove column entirely but then new one would be added at end of DF)
+    if column_name in dataframe.columns and is_same_dtype(dataframe[column_name], column_data):
+        dataframe[column_name] = np.nan
+
+    # Set index so values are integrated as expected
+    column_data.index = dataframe.index
+
+    dataframe[column_name] = column_data
 
 
 def is_same_dtype(series1, series2):
@@ -250,3 +277,14 @@ def is_same_dtype(series1, series2):
         return series1.dtype == series2.dtype
     except TypeError:
         return series2.dtype == series1.dtype
+
+
+def reset_index(df_or_series):
+    """
+    Reset the index of a DF or series by assigning a new one
+    Is faster than df.reset_index() (makes a new copy) but changes index in-place
+    :param df_or_series:
+    :return:
+    """
+    df_or_series.index = pd.RangeIndex(len(df_or_series.index))
+    return df_or_series

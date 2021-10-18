@@ -54,7 +54,7 @@ class FilterFileLines(Operation):
     def action(self, file_reader):
         output = io.StringIO()
         for line in file_reader:
-            if self.run_child_operation(self.condition, line):
+            if self.condition(line):
                 output.write(line)
         output.seek(0)
         return output

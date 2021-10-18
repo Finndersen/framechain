@@ -14,8 +14,6 @@ class ASN1BERRecordExtractor(IterableRecordsDataframeGenerator):
     Need to specify record types and fields of interest for extraction
     """
 
-    calling_translations = {'file_data': 'dataframe'}
-
     def __init__(self, record_types, fields, data_skipper=None, **kwargs):
         """
         :param list/tuple of ASN1RecordType record_types: ASN1RecordType instances representing target recordtypes

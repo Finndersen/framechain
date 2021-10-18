@@ -19,7 +19,7 @@ class Cached(Operation):
         :param args: Transformation primary argument
         :return:
         """
-        return self.run_child_operation(self.operation, *args)
+        return self.operation(*args)
 
     def description(self):
         return '({}) with caching'.format(self.operation)
@@ -48,7 +48,7 @@ class MapArguments(Operation):
         :param args: Values which will be passed to arg_mappings to generate input arguments for operation
         :return:
         """
-        return self.run_child_operation(self.operation, **{arg_name: arg_operation(*args)
+        return self.operation(**{arg_name: arg_operation(*args)
                                                            for arg_name, arg_operation in self.arg_mapping.items()})
 
     def description(self):

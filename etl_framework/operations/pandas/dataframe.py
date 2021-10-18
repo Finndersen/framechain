@@ -28,7 +28,7 @@ class DropRows(DataframeOperation):
 
     def action(self, dataframe):
         # Get masked/filtered DF
-        drop_mask = self.run_child_operation(self.condition, dataframe)
+        drop_mask = self.condition(dataframe)
         if not pd.api.types.is_bool_dtype(drop_mask):
             self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
 
@@ -245,8 +245,8 @@ class CombineFirst(DataframeOperation):
                                                          else second_operation)
 
     def action(self, dataframe):
-        first_column = self.run_child_operation(self.first_operation, dataframe)
-        second_column = self.run_child_operation(self.second_operation, dataframe)
+        first_column = self.first_operation(dataframe)
+        second_column = self.second_operation(dataframe)
 
         if not isinstance(first_column, pd.Series):
             raise ValueError('Operation must return Series, not: {}'.format(type(first_column)))

@@ -173,3 +173,12 @@ class ArgsToList(Operation):
     """
     def action(self, *args):
         return args
+
+
+class Print(Operation):
+    """
+    Prints and returns input value. Useful for debugging
+    """
+    def action(self, value):
+        print(value)
+        return value

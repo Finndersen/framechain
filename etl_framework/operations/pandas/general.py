@@ -12,11 +12,6 @@ class Field(Operation):
     """
     Operation used to select a column of a Dataframe or a field value of a Row
     """
-    calling_translations = {
-        'dataframe': 'column',
-        'row': 'value'
-    }
-
     def __init__(self, field_name):
         """
 
@@ -225,3 +220,35 @@ class Copy(Operation):
         :return:
         """
         return vector.copy(deep=self.deep)
+
+
+class PrintDF(Operation):
+    """
+    Print contents of DataFrame and return input
+    Useful for debugging
+    """
+    def __init__(self, message=None, columns=None, rows=15):
+        """
+        :param str message: Message to describe DF
+        :param list columns: List of columns to print, otherwise all
+        :param int rows: Number of rows to print
+        """
+        super().__init__()
+        self.message = message
+        self.columns = columns
+        self.rows = rows
+
+    def action(self, dataframe):
+        """
+
+        :param pd.DataFrame dataframe:
+        :return:
+        """
+        if self.message:
+            print(self.message)
+        columns = self.columns or dataframe.columns
+        pd.set_option('display.width', None)
+        pd.set_option('display.max_columns', None)
+        pd.set_option('display.max_rows', self.rows)
+        print(dataframe[columns])
+        return dataframe

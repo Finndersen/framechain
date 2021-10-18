@@ -14,10 +14,6 @@ class If(Operation):
     """
     Conditional statement to choose between executing one or another operation
     """
-    calling_translations = {
-        'column': 'column',
-        'value': 'value'
-    }
 
     def __init__(self, condition, true_operation, false_operation=None):
         """
@@ -32,10 +28,10 @@ class If(Operation):
         self.condition = self.add_child_operation(condition)
 
     def action(self, value):
-        if self.run_child_operation(self.condition, value):
-            return self.run_child_operation(self.true_operation, value)
+        if self.condition(value):
+            return self.true_operation(value)
         else:
-            return self.run_child_operation(self.false_operation, value)
+            return self.false_operation(value)
 
     def description(self):
         return 'If {}, \nThen: ({}), \nElse: ({})'.format(str(self.condition), self.true_operation,
@@ -82,11 +78,11 @@ class SwitchCase(Operation):
         self.key_operation = self.add_child_operation(key_operation, wrap_value=False)
 
     def action(self, value):
-        case_value = self.run_child_operation(self.key_operation, value)
+        case_value = self.key_operation(value)
         if case_value in self.case_mapping:
-            return self.run_child_operation(self.case_mapping[case_value], value)
+            return self.case_mapping[case_value](value)
         else:
-            return self.run_child_operation(self.default, value)
+            return self.default(value)
 
     def description(self):
         return 'Switch on value of: \n"{}"'.format(self.key_operation)
@@ -141,7 +137,7 @@ class Fork(Operation):
 
         # Execute chain of operations
         for i, operation in enumerate(self.fork_operations):
-            value = self.run_child_operation(operation, copy.deepcopy(input_val))
+            value = operation(copy.deepcopy(input_val))
             outputs.append(value)
         return outputs
 
@@ -216,4 +212,4 @@ class Iterate(Operation):
 
     def action(self, iterable):
         for item in iterable:
-            yield self.run_child_operation(self.operation, item)
+            yield self.operation(item)

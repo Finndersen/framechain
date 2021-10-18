@@ -33,7 +33,7 @@ class BinaryFixedWidthRecordExtractor(IterableRecordsDataframeGenerator):
                 break
 
             if self.recordtype_detector:
-                record_type = self.run_child_operation(self.recordtype_detector, record_data)
+                record_type = self.recordtype_detector(record_data)
                 # Skip record
                 if record_type is None:
                     continue

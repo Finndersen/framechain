@@ -1,11 +1,18 @@
 from etl_framework.exceptions import ETLError
 
+
 class MaskMismatchError(ETLError):
     """
     Error for incorrect boolean mask when integrating data into series
     """
     pass
 
+
+class LengthMismatchError(ETLError):
+    """
+    Error for when there is a mismatch in array length (Series or DF)
+    """
+    pass
 
 class ChangedDataTypeError(ETLError):
     """

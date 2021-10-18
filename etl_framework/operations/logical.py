@@ -58,13 +58,13 @@ class And(Operation):
 
     def action(self, *args):
         # Initialise with first result
-        value = self.run_child_operation(self.child_operations[0], *args)
+        value = self.child_operations[0](*args)
         for operation in self.child_operations[1:]:
             # Exit early if falsey
             if not value:
                 break
 
-            value = value and self.run_child_operation(operation, *args)
+            value = value and operation(*args)
 
         return value
 
@@ -76,13 +76,13 @@ class Or(And):
 
     def action(self, *args):
         # Initialise with first result
-        value = self.run_child_operation(self.child_operations[0], *args)
+        value = self.child_operations[0](*args)
         for operation in self.child_operations[1:]:
             # Exit early if truthy
             if value:
                 break
 
-            value = value or self.run_child_operation(operation, *args)
+            value = value or operation(*args)
 
         return value
 
@@ -100,7 +100,7 @@ class Not(Operation):
         self.operation = self.add_child_operation(operation)
 
     def action(self, *args):
-        return not self.run_child_operation(self.operation, *args)
+        return not self.operation(*args)
 
     def description(self):
         return 'NOT ({})'.format(self.operation)

@@ -18,7 +18,7 @@ class SubGraph(Operation):
         self.label = label
 
     def action(self, *args):
-        return self.run_child_operation(self.operation, *args)
+        return self.operation(*args)
 
     def description(self):
         return self.operation.description()

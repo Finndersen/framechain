@@ -113,17 +113,17 @@ class BaseDataFrameGenerator(Operation):
             exec_time -= op.get_cumulative_time()
         return exec_time
 
-    def get_child_operation_stats(self, child_operation):
-        """
-        BaseDataFrameGenerator does not have visibility of Field.convert_value execution time
-        Assume this is the only caller of the field instance and return full execution stats
-        :param child_operation:
-        :return:
-        """
-        if isinstance(child_operation, InputField):
-            return child_operation.get_execution_stats()
-        else:
-            return super().get_child_operation_stats(child_operation)
+    # def get_child_operation_stats(self, child_operation):
+    #     """
+    #     BaseDataFrameGenerator does not have visibility of Field.convert_value execution time
+    #     Assume this is the only caller of the field instance and return full execution stats
+    #     :param child_operation:
+    #     :return:
+    #     """
+    #     if isinstance(child_operation, InputField):
+    #         return child_operation.get_execution_stats()
+    #     else:
+    #         return super().get_child_operation_stats(child_operation)
 
 
 class IterableRecordsDataframeGenerator(BaseDataFrameGenerator):
@@ -161,7 +161,7 @@ class IterableRecordsDataframeGenerator(BaseDataFrameGenerator):
         """
         # Get iterable of record chunks
         if self.record_processor:
-            records = (self.run_child_operation(self.record_processor, record)
+            records = (self.record_processor(record)
                        for record in self.get_records(input_data))
         else:
             records = self.get_records(input_data)
@@ -248,12 +248,12 @@ class InputField(BaseOperation):
         if value in self.EMPTY_VALUES:
             return None
 
-        if self.ignore_condition and self.run_child_operation(self.ignore_condition, value):
+        if self.ignore_condition and self.ignore_condition(value):
             return None
 
         # Convert value if present
         if value is not None and self.value_converter:
-            value = self.run_child_operation(self.value_converter, value)
+            value = self.value_converter(value)
 
         return value
 
@@ -270,7 +270,7 @@ class InputField(BaseOperation):
 
         # Perform vectorised value conversion
         if self.column_converter:
-            column = self.run_child_operation(self.column_converter, column)
+            column = self.column_converter(column)
 
         # if self.dtype:
         #     column = column.astype(self.dtype, copy=False)

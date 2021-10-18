@@ -49,7 +49,7 @@ class AdvancedDelimitedRecordExtractor(IterableRecordsDataframeGenerator):
 
         for record_number, raw_row in enumerate(csv_reader, start=1):
             if self.recordtype_detector:
-                recordtype = self.run_child_operation(self.recordtype_detector, raw_row)
+                recordtype = self.recordtype_detector(raw_row)
                 # Skip record if no record type
                 if recordtype is None:
                     continue
