@@ -1,9 +1,7 @@
 import logging
 from collections import defaultdict
-from pprint import pprint
 
-from .fields import ASN1BERField
-from .exceptions import ASNDecodeError, SkipRecordError, EndOfFileError, OperationConfigurationError
+from .exceptions import ASNDecodeError, EndOfFileError, OperationConfigurationError
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +55,8 @@ class ASN1Node(object):
     """
     Object to represent ASN1 node
     """
-    __slots__ = ('constructed', 'tag_number', 'id', 'start_pos', 'value_pos', 'end_pos', 'parent', 'depth')
+    __slots__ = (
+    'constructed', 'tag_number', 'id', 'start_pos', 'value_pos', 'end_pos', 'parent', 'depth')
 
     def __init__(self, tag_number, constructed, start_pos, tag_len, value_len, parent):
         """
@@ -76,9 +75,6 @@ class ASN1Node(object):
 
         self.value_pos = start_pos + tag_len
         self.end_pos = None if value_len is None else (start_pos + tag_len + value_len)
-        # self.depth = parent.depth + 1 if parent else 0
-        # Calculate unique absolute ID of node (add 1 so it will always contribute something)
-        # self.id = (tag_number if parent is None else (parent.id << 8) + tag_number) + 1
 
     def full_id(self):
         """
@@ -120,11 +116,13 @@ class ASN1BERDecoder(object):
                 for record_type_name in field.asn_ids:
                     if record_type_name not in record_type_names:
                         raise OperationConfigurationError(
-                            'Record Type {} defined in {} configuration is invalid'.format(record_type_name, field))
+                            'Record Type {} defined in {} configuration is invalid'.format(
+                                record_type_name, field))
 
             # Validate no duplicate field names
             if field.name in field_names:
-                raise ValueError('Field with name: "{}" has already been defined'.format(field.name))
+                raise ValueError(
+                    'Field with name: "{}" has already been defined'.format(field.name))
 
             # Validate no field has same name as recordtype field name
             if field.name == self.RECORDTYPE_FIELD_NAME:
@@ -149,7 +147,8 @@ class ASN1BERDecoder(object):
                                         error_if_exists=True)  # TODO: list of fields instead of just one
             # Add Record Type definitions to field structure
             set_nested_dict_key(self.target_fields,
-                                [int(tag_num) for tag_num in record_type.asn_id.split('-')] + [self.RECORDTYPE_KEY],
+                                [int(tag_num) for tag_num in record_type.asn_id.split('-')] + [
+                                    self.RECORDTYPE_KEY],
                                 record_type.name,
                                 error_if_exists=True)
 
@@ -219,14 +218,15 @@ class ASN1BERDecoder(object):
             if num_length_bytes:  # Definite length field
                 # calculate long value length
                 value_len = 0
-                for byte in self.asn_data[start_pos + tag_len: start_pos + tag_len + num_length_bytes]:
+                len_start_pos = start_pos + tag_len
+                for byte in self.asn_data[len_start_pos: len_start_pos + num_length_bytes]:
                     value_len = (value_len << 8) + byte
                 tag_len += num_length_bytes
             else:  # Indefinite length field
                 value_len = None
         else:
             # Standard length
-            value_len = len_byte & 0x7f
+            value_len = len_byte
 
         return ASN1Node(tag_number, constructed, start_pos, tag_len, value_len, parent_node)
 
@@ -257,14 +257,6 @@ class ASN1BERDecoder(object):
         :param dict record_data:
         :return:
         """
-
-        # if node.depth == self.recordtype_depth:
-        #     if node.id in self.target_recordtypes:
-        #         # Set record type field
-        #         record_data[self.RECORDTYPE_FIELD_NAME] = self.target_recordtypes[node.id].name
-        #     else:  # Skip irrelevant record type
-        #         self.skip_node(self.record_node)
-        #         raise SkipRecordError()
         if node.tag_number in target_fields:
             # Traverse through children of constructed node
             if node.constructed:
@@ -272,7 +264,8 @@ class ASN1BERDecoder(object):
                 decode_pos = node.value_pos
                 # Add Record Type
                 if self.RECORDTYPE_KEY in node_target_fields:
-                    record_data[self.RECORDTYPE_FIELD_NAME] = node_target_fields[self.RECORDTYPE_KEY]
+                    record_data[self.RECORDTYPE_FIELD_NAME] = node_target_fields[
+                        self.RECORDTYPE_KEY]
                 # Extract fields from child nodes
                 while True:
                     child_node = self.decode_node(decode_pos, parent_node=node)
@@ -288,17 +281,12 @@ class ASN1BERDecoder(object):
             else:
                 # Add value of primitive node to record
                 field = target_fields[node.tag_number]
-                # if not isinstance(field, ASN1BERField):
-                #     raise Exception('{} does not have Field configured'.format(node))
                 field.add_to_record(record_data, self.get_node_value(node))
-                # Can be multiple field extractions for single ASN1 field
-                # fields = self.target_fields[node.id]
-                # for field in fields:
-                #     field.add_to_record(record_data, raw_field_value)
+                # TODO: Support multiple field extractions for single ASN1 field?
 
         # Skip indefinite length constructed node (set end_pos)
         elif node.end_pos is None:
-            self.skip_indefinite_length_node(node)
+            node.end_pos = self.get_indefinite_length_end_pos(node)
 
     def is_node_last_child(self, node):
         """
@@ -326,9 +314,9 @@ class ASN1BERDecoder(object):
         else:
             raise ASNDecodeError('Cannot get data of node with no end position')
 
-    def skip_indefinite_length_node(self, node):
+    def get_indefinite_length_end_pos(self, node):
         """
-        Traverse ASN structure of indefinite length node and update end_pos
+        Traverse ASN structure of indefinite length node to find end_pos
         :param ASN1Node node:
         :return:
         """
@@ -338,12 +326,11 @@ class ASN1BERDecoder(object):
             child_node = self.decode_node(decode_pos, parent_node=node)
             # Recursive skip indefinite child node
             if child_node.end_pos is None:
-                self.skip_indefinite_length_node(child_node)
+                child_node.end_pos = self.get_indefinite_length_end_pos(child_node)
 
             # If last child, update end position of node and current ASN index, adn exit loop
             if self.is_node_last_child(child_node):
-                node.end_pos = child_node.end_pos + 2
-                break
+                return child_node.end_pos + 2
             else:
                 # Update ASN index to decode next node
                 decode_pos = child_node.end_pos
@@ -367,7 +354,8 @@ def convert_asn_tag_to_unique_integer(asn_tag):
     :param str asn_tag: ASN tag as string containing hyphen-seperated integers e.g. '0-1-4'
     :return:
     """
-    return sum((int(asn_id) + 1) << (8 * i) for i, asn_id in enumerate(reversed(asn_tag.split('-'))))
+    return sum(
+        (int(asn_id) + 1) << (8 * i) for i, asn_id in enumerate(reversed(asn_tag.split('-'))))
 
 
 class ASN1RecordType(object):

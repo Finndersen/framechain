@@ -69,7 +69,7 @@ class LocalFileWriter(BaseFileWriter):
     Returns output file path
     """
 
-    def __init__(self, output_path, newline='', compress=None, append=False, overwrite=True):
+    def __init__(self, output_path, newline='', compress=None, append=False, overwrite=True, create_dir=True):
         """
 
         :param str output_path: output file path
@@ -79,6 +79,7 @@ class LocalFileWriter(BaseFileWriter):
         If not specified, will infer from filename (True if ends in .gz)
         :param bool append: whether to append to output file
         :param bool overwrite: Whether to overwrite existing file
+        :param create_dir: Whether to automatically create output directory
 
         """
         super().__init__(output_path=output_path)
@@ -89,12 +90,14 @@ class LocalFileWriter(BaseFileWriter):
         self.compress = compress
         self.append = append
         self.overwrite = overwrite
+        self.create_dir = create_dir
 
     def write_data(self, file_data):
         # Create output directory if not exists (and absolute path provided)
-        dir_name = os.path.dirname(self.output_path)
-        if dir_name:
-            os.makedirs(dir_name, exist_ok=True)
+        if self.create_dir:
+            dir_name = os.path.dirname(self.output_path)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
 
         # Determine write mode and newline parameter
         if self.append:

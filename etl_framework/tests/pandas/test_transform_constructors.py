@@ -3,7 +3,7 @@ import pandas as pd
 from pandas.testing import assert_frame_equal, assert_series_equal
 
 from etl_framework.operations import Value, OperationError
-from etl_framework.operations.pandas import SetColumn, Field, LengthMismatchError
+from etl_framework.operations.pandas import SetColumn, Column, LengthMismatchError
 from etl_framework.tests.base import ETLFrameworkTestCase
 
 
@@ -21,7 +21,7 @@ class TestTransformConstructors(ETLFrameworkTestCase):
         original_copy = original_df.copy(deep=True)
 
         # Test replacing existing column (ignoring index of new data)
-        result_df = SetColumn('a', pd.Series([4, 5, 6], index=[2,1,0]))(original_df)
+        result_df = SetColumn('a', pd.Series([4, 5, 6], index=[2, 1, 0]))(original_df)
         assert_frame_equal(result_df, pd.DataFrame({
             'a': [4, 5, 6],
             'b': ['a', 'b', 'c']
@@ -30,7 +30,7 @@ class TestTransformConstructors(ETLFrameworkTestCase):
         assert_frame_equal(original_df, original_copy)
 
         # Test adding new column
-        result_df = SetColumn('c', pd.Series([4, 5, 6], index=[2,1,0]))(original_df)
+        result_df = SetColumn('c', pd.Series([4, 5, 6], index=[2, 1, 0]))(original_df)
         assert_frame_equal(result_df, pd.DataFrame({
             'a': [1,2,3],
             'b': ['a', 'b', 'c'],

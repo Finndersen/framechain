@@ -1,7 +1,7 @@
 from etl_framework.operations import BytesToString, profiled
-from etl_framework.operations.pandas import ToNullableInteger
+from etl_framework.operations.pandas import ToNullableInteger, INTEGER_SIZES
 from etl_framework.operations.transforms import BytesToHexString, BytesToInteger
-from .base import InputField, IterableRecordsDataframeGenerator
+from .base import InputField, IterableRecordsDataframeGenerator, IntegerFieldMixin
 
 
 class BinaryFixedWidthRecordExtractor(IterableRecordsDataframeGenerator):
@@ -116,33 +116,53 @@ class HexField(BFWField):
     """
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, value_converter=BytesToHexString(), **kwargs)
+        super().__init__(*args, value_converter=BytesToHexString(), dtype=object,
+                         **kwargs)
 
 
 class StringField(BFWField):
     """
-    Field class which decodes byte content to string
+    Field class which decodes byte content to string. Use latin-1 encoding by default
+    (1 byte max per char)
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, value_converter=BytesToString(), **kwargs)
+    def __init__(self, *args, encoding='latin-1', **kwargs):
+        super().__init__(*args, value_converter=BytesToString(encoding=encoding), dtype=object,
+                         **kwargs)
 
 
-class IntegerField(BFWField):
+class IntegerField(IntegerFieldMixin, BFWField):
     """
-    Field which converts byte values to integer
+    Field which converts byte values to integer (unsigned by default)
+    Automatically determines required Nullable Integer type size based on length of field content
+    if not specified
     """
 
-    def __init__(self, *args, bytes_reversed=False, size=32, **kwargs):
+    def __init__(self, name, start_pos, length, bytes_reversed=False, signed=False, size=None, **kwargs):
         """
         Add value converter to convert bytes to integer, and column converter to nullable integer to handle cases when
         there may be missing values in column
-        :param args:
+        :param str name:
+        :param int start_pos:
+        :param int length: Length of field in bytes
         :param bool bytes_reversed: Whether bytes are reversed (little endian byteorder encoding)
-        :param int size: Integer size
+        :param bool signed: Whether integer is signed
         :param kwargs:
         """
-        super().__init__(*args,
-                         value_converter=BytesToInteger(byteorder='little' if bytes_reversed else 'big'),
-                         column_converter=ToNullableInteger(size=size),
+        if size is None:
+            # Calculate appropriate nullable integer size
+            # If integer value is unsigned, Nullable integer type size must be double number of bits
+            required_bits = length * 8 if signed else length * 8 * 2
+            # Choose from valid size options
+            size = INTEGER_SIZES[-1]
+            for size_option in INTEGER_SIZES[::-1]:
+                if required_bits <= size_option:
+                    size = size_option
+                else:
+                    break
+
+        super().__init__(name, start_pos, length,
+                         value_converter=BytesToInteger(byteorder='little' if bytes_reversed else 'big',
+                                                        signed=signed),
+                         size=size,
                          **kwargs)

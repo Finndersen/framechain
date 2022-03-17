@@ -2,38 +2,49 @@ import itertools
 
 import pandas as pd
 
-from etl_framework.exceptions import OperationConfigurationError
 from etl_framework.operations import Operation
-from etl_framework.operations.general import Map
+from etl_framework.operations.general import MapValue
 from etl_framework.operations.pandas.base import ColumnOperation
+from etl_framework.operations.pandas.exceptions import InvalidColumnError, OperationConfigurationError
 
 
-class Field(Operation):
+class Column(Operation):
     """
     Operation used to select a column of a Dataframe or a field value of a Row
     """
-    def __init__(self, field_name):
+    def __init__(self, column_name):
         """
 
-        :param field_name: Name of column to select
+        :param column_name: Name of column to select
         """
         super().__init__()
-        if not isinstance(field_name, str):
+        if not isinstance(column_name, str):
             self.error(OperationConfigurationError, 'Field name must be string')
-        self.field_name = field_name
+        self.column_name = column_name
 
-    def action(self, multiple_fields):
+    def action(self, df_or_series):
         """
-        :param multiple_fields: Dataframe or Row containing multiple fields
+        :param df_or_series: Dataframe or Row containing multiple fields
         return:
         """
-        return multiple_fields[self.field_name]
+        if isinstance(df_or_series, pd.DataFrame):
+            if self.column_name not in df_or_series.columns:
+                raise InvalidColumnError('"{}" is not in DataFrame columns: {}'.format(self.column_name,
+                                                                                       df_or_series.columns))
+        elif isinstance(df_or_series, pd.Series):
+            if self.column_name not in df_or_series.index:
+                raise InvalidColumnError('"{}" is not in Series index: {}'.format(self.column_name,
+                                                                                       df_or_series.index))
+        else:
+            raise TypeError('Expected DataFrame or Series, not {}'.format(type(df_or_series)))
+
+        return df_or_series[self.column_name]
 
     def description(self):
-        return 'Field: "{}"'.format(self.field_name)
+        return 'Column: "{}"'.format(self.column_name)
 
 
-class ColumnMap(Map, ColumnOperation):
+class ColumnMap(MapValue, ColumnOperation):
     """
     Provide mapping dictionary which will be used to Convert column values
     Can specify logic for what happens when lookup values are missing (raise error, pass through key, use default)
@@ -47,14 +58,8 @@ class ColumnMap(Map, ColumnOperation):
 class ColumnOfValue(Operation):
     """
     Returns a column/Series of equal constant values, with length equal to that of input DataFrame
-    Provided value can be static or callable which returns a value (e.g. from ContextValue)
     """
-    calling_translations = {
-        'dataframe': 'column',
-        'column': 'column',
-    }
-
-    def __init__(self, value, dtype=None):
+    def __init__(self, value, dtype=object):
         """
 
         :param value: static value or callable which returns scalar value
@@ -70,8 +75,7 @@ class ColumnOfValue(Operation):
         :param vector: Dataframe or Series
         :return:
         """
-        repeated_value = self.value(vector) if callable(self.value) else self.value
-        return pd.Series([repeated_value] * len(vector.index), index=vector.index, dtype=self.dtype)
+        return pd.Series([self.value] * len(vector.index), index=vector.index, dtype=self.dtype)
 
     def description(self):
         desc = 'Column with value: "{}"'.format(self.value)
@@ -107,7 +111,8 @@ class FillNA(Operation):
 
 class Min(Operation):
     """
-    Get minimum value of Series (scalar value) or row-wise minimum of Dataframe (Series of minimums for each row)
+    Get minimum value of Series (return scalar value) or row-wise minimum of Dataframe
+    (return Series of minimums for each row)
     """
 
     def __init__(self, axis=None):

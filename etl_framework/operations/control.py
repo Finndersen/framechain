@@ -34,8 +34,10 @@ class If(Operation):
             return self.false_operation(value)
 
     def description(self):
-        return 'If {}, \nThen: ({}), \nElse: ({})'.format(str(self.condition), self.true_operation,
-                                                          self.false_operation)
+        desc = 'If {}, \nThen: ({})'.format(self.condition, self.true_operation)
+        if self.false_operation:
+            desc += ', \nElse: ({})'.format(self.false_operation)
+        return desc
 
     def short_description(self):
         return 'If {}'.format(str(self.condition))
@@ -85,7 +87,7 @@ class SwitchCase(Operation):
             return self.default(value)
 
     def description(self):
-        return 'Switch on value of: \n"{}"'.format(self.key_operation)
+        return 'Switch on value of: "{}"'.format(self.key_operation)
 
     def add_to_graph(self, graph):
         from pydot import Edge, Node
@@ -187,19 +189,43 @@ class Fork(Operation):
                                                                                      enumerate(self.fork_operations)))
 
 
-class Collect(Operation):
+class CollectFrom(Operation):
     """
-    Collects an iterable into a tuple of values
+    Runs iterable operation and collects results into a tuple
     """
+    def __init__(self, operation):
+        """
 
-    def action(self, iterable):
-        return tuple(iterable)
+        :param operation: Operation which takes some single input and returns iterator of values
+        """
+        super().__init__()
+        self.operation = self.add_child_operation(operation)
+
+    def action(self, input_val):
+        return tuple(self.operation(input_val))
+
+    def description(self):
+        return 'Collect values from iterable: {}'.format(self.operation)
+
+    def short_description(self):
+        return 'Collect values from iterable'
+
+    def add_to_graph(self, graph):
+        # Create Subgraph/cluster to contain wrapped operation
+        from pydot import Cluster
+        subgraph = Cluster(graph_name=randomstring(10),
+                           label=self.short_description())
+        start_node, end_node = self.operation.add_to_graph(subgraph)
+        graph.add_subgraph(subgraph)
+        return start_node, end_node
 
 
-class Iterate(Operation):
+class Map(Operation):
     """
-    Iterates over provided iterator and execute provided operation on each element
-    Returns a generator of result of each item after being transformed by operation
+    Apply operation to each element of input
+    Currently needs to evaluate all results at once in order to profile execution stats properly (otherwise actual
+    processing will occur when operation further down the chain evaluates the iterator)
+    TODO: Try work out how to properly profile generators??
     """
 
     def __init__(self, operation):
@@ -211,5 +237,19 @@ class Iterate(Operation):
         self.operation = self.add_child_operation(operation)
 
     def action(self, iterable):
-        for item in iterable:
-            yield self.operation(item)
+        return [self.operation(item) for item in iterable]
+
+    def description(self):
+        return 'Map on each input element: {}'.format(self.operation)
+
+    def short_description(self):
+        return 'Map function on each input element'
+
+    def add_to_graph(self, graph):
+        # Create Subgraph/cluster to contain wrapped operation
+        from pydot import Cluster
+        subgraph = Cluster(graph_name=randomstring(10),
+                           label=self.short_description())
+        start_node, end_node = self.operation.add_to_graph(subgraph)
+        graph.add_subgraph(subgraph)
+        return start_node, end_node

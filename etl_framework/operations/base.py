@@ -10,6 +10,7 @@ from time import perf_counter, sleep
 
 import pandas as pd
 
+from etl_framework.exceptions import InvalidProfileDataError
 from etl_framework.utils import randomstring
 
 log = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ def profiled(method):
                 start_time = perf_counter()
                 # Get profile stats of child operations before running
                 before_child_profile_stats = {
-                    operation.pstat_id: operation.get_execution_stats() for operation in self.child_operations
+                    id(operation): operation.get_execution_stats() for operation in self.child_operations
                 }
                 before_child_overhead_time = sum(child.get_total_overhead_time() for child in self.child_operations)
                 self.profiling_active = True
@@ -64,24 +65,23 @@ def profiled(method):
                 result = method(self, *args)
                 after_run_time = perf_counter()
 
-                self._call_count += 1
                 # Get change in child operation profile stats associated with this parent operation
                 for operation in self.child_operations:
-                    child_stat_delta = get_stat_delta(before_child_profile_stats[operation.pstat_id],
+                    child_stat_delta = get_stat_delta(before_child_profile_stats[id(operation)],
                                                       operation.get_execution_stats())
 
-                    self._child_execution_cumtime += child_stat_delta[3]
-
                     add_profile_stats(self._child_execution_stats,
-                                      operation.pstat_id,
+                                      id(operation),
                                       child_stat_delta,
                                       primary=False)
 
-                self.profiling_active = False
                 # Update profile timings
-                after_child_overhead_time = sum(child.get_total_overhead_time() for child in self.child_operations)
-                self._cumulative_time += (after_run_time - before_run_time -
-                                          (after_child_overhead_time - before_child_overhead_time))
+                child_overhead_delta = (sum(child.get_total_overhead_time() for child in self.child_operations)
+                                        - before_child_overhead_time)
+                # Update total execution time (including child operation time) excluding overhead time
+                self._cumulative_time += (after_run_time - before_run_time - child_overhead_delta)
+                self._call_count += 1
+                self.profiling_active = False
                 self._overhead_time += (perf_counter() - after_run_time) + (before_run_time - start_time)
                 return result
             else:
@@ -113,13 +113,10 @@ class BaseOperation(object):
         self.profiling_enabled = False  # Whether profiling is enabled
         self.profiling_active = False  # Whether profiling is currently active (profiled method is running)
         self._call_count = 0  # Number of times operation has been called
-        # Cumulative execution time of operation (including exec time but not overhead time of child operations)
+        # Cumulative execution time of operation and child operations (excluding overhead time of child operations)
         self._cumulative_time = 0
-        self._overhead_time = 0     # Time consumed by operation overheads such as recording profile stats
-        self._child_execution_stats = {}
-        self._child_execution_cumtime = 0
-        self._profile_data = None   # Cached profile data
-        self.added_profile_data = False   # Whether this operation has added its profile data
+        self._overhead_time = 0     # Time consumed recording profile stats for this operation
+        self._child_execution_stats = {}    # Mapping of child operation IDs to profile stats for this parent
 
     def error(self, exc_type, message):
         """
@@ -139,9 +136,9 @@ class BaseOperation(object):
                 start_time = perf_counter()
                 # Get profile stats of child operations before running
                 before_child_profile_stats = {
-                    operation.pstat_id: operation.get_execution_stats() for operation in self.child_operations
+                    id(operation): operation.get_execution_stats() for operation in self.child_operations
                 }
-                before_child_overhead_time = sum(child.get_total_overhead_time() for child in self.child_operations)
+                before_overhead_time = self.get_total_overhead_time()
                 self.profiling_active = True
 
                 # Run operation
@@ -151,20 +148,17 @@ class BaseOperation(object):
 
                 # Get change in child operation profile stats associated with this parent operation
                 for operation in self.child_operations:
-                    child_stat_delta = get_stat_delta(before_child_profile_stats[operation.pstat_id],
+                    child_stat_delta = get_stat_delta(before_child_profile_stats[id(operation)],
                                                      operation.get_execution_stats())
 
-                    self._child_execution_cumtime += child_stat_delta[3]
-
                     add_profile_stats(self._child_execution_stats,
-                                      operation.pstat_id,
+                                      id(operation),
                                       child_stat_delta,
                                       primary=False)
                 # Update profile timings
-                after_child_overhead_time = sum(child.get_total_overhead_time() for child in self.child_operations)
-                # Update total execution time (including child operation time) excluding overhead time
-                self._cumulative_time += (after_run_time - before_run_time -
-                                          (after_child_overhead_time - before_child_overhead_time))
+                child_overhead_delta = self.get_total_overhead_time() - before_overhead_time
+                # Update total execution time (excluding child overhead time)
+                self._cumulative_time += (after_run_time - before_run_time - child_overhead_delta)
                 self._call_count += 1
                 self.profiling_active = False
                 self._overhead_time += (perf_counter() - after_run_time) + (before_run_time - start_time)
@@ -201,32 +195,18 @@ class BaseOperation(object):
             self.child_operations.append(operation)
         return operation
 
-    def run_child_operation(self, operation, *args):
+    def search(self, condition):
         """
-        Run a child operation and record execution time
-        TODO: NOW OBSOLETE due to child profile stat handling in __call__()
-        :param Operation operation:
-        :param args:
-        :param kwargs:
+        Return list of operations contained within this operation (including self) that match condition
+        :param condition: Callable which takes operation instance and returns boolean
         :return:
         """
-        if self.profiling_enabled:
-            pre_cum_time = operation.get_cumulative_time()
-            pre_tot_time = operation.get_execute_time()
-            result = operation(*args)
-            delta_cum_time = operation.get_cumulative_time() - pre_cum_time
-            delta_tot_time = operation.get_execute_time() - pre_tot_time
-
-            self._child_execution_cumtime += delta_cum_time
-
-            add_profile_stats(self._child_execution_stats,
-                              operation.pstat_id,
-                              (1, 1, delta_tot_time, delta_cum_time),
-                              primary=False)
-
-            return result
-        else:
-            return operation(*args)
+        # Get child operation matches
+        matches = [match_op for child_op in self.child_operations for match_op in child_op.search(condition)]
+        # add self if match
+        if condition(self):
+            matches = [self] + matches
+        return matches
 
     #############################################################################################
     #   PROFILING
@@ -235,7 +215,7 @@ class BaseOperation(object):
     def unique_pstat(self):
         """
         Whether each instance of this operation should have its own unique profile data or share it with other instances
-        with same description.
+        with same configuration.
         By default, compound operations (with any child operations registered) have unique profile stats
         :return:
         """
@@ -278,18 +258,17 @@ class BaseOperation(object):
         return result
 
     def get_profile_data(self):
-        if self._profile_data is None:
-            profile_data = {}
-            self.add_profile_data(profile_data)
-            self._profile_data = profile_data
-        return self._profile_data
+        # operation_ids set is used to keep track of which operations have already added their profile data
+        profile_data = {'operation_ids': set()}
+        self.add_profile_data(profile_data, None)
+        profile_data.pop('operation_ids')
+        return profile_data
 
-    def add_profile_data(self, profile_data, caller=None):
+    def add_profile_data(self, profile_data, caller):
         """
 
         :param dict profile_data: Current profile data dictionary
-        :param Operation caller: parent calling operation
-        'transparent' operations in between
+        :param Operation, None caller: parent calling operation
         :return:
         """
         self.add_self_profile_data(profile_data, caller)
@@ -301,8 +280,7 @@ class BaseOperation(object):
     def add_self_profile_data(self, profile_data, caller):
         """
         :param dict profile_data: Current profile data dictionary
-        :param Operation caller: parent calling operation
-        'transparent' operations in between
+        :param Operation, None caller: parent calling operation
         :return:
         """
         # Dont add to profile stats if not called
@@ -312,28 +290,28 @@ class BaseOperation(object):
         node_id = self.pstat_id
 
         # Only add this instance's profile data once
-        if not self.added_profile_data:
+        if id(self) not in profile_data['operation_ids']:
             add_profile_stats(profile_data,
                               node_id,
                               self.get_execution_stats(),
                               primary=True)
-            self.added_profile_data = True
+            profile_data['operation_ids'].add(id(self))
 
         # add profile stats for caller
         if caller:
             stats_for_caller = caller.get_child_operation_stats(self)
+            # Stats may be None if parent operation was never run, and dont add stats if run count is 0
             if stats_for_caller and stats_for_caller[0]:
-                # Add to existing caller details
                 add_profile_stats(profile_data[node_id][4], caller.pstat_id, stats_for_caller, primary=False)
 
     def get_child_operation_stats(self, child_operation):
         """
         Get child operation execution stats due to calling by this parent operation
-        Return None if already provided
+        May not exist if this operation was never executed
         :param BaseOperation child_operation:
         :return:
         """
-        return self._child_execution_stats.pop(child_operation.pstat_id, None)
+        return self._child_execution_stats.get(id(child_operation), None)
 
     def get_execution_stats(self):
         """
@@ -353,9 +331,25 @@ class BaseOperation(object):
     def get_total_overhead_time(self):
         """
         Get overhead time of this operation and all child operations
+        Value may not reflect overhead time associated only with this operation execution,
+        if any child operations are used outside of this operation
         :return:
         """
-        return self._overhead_time + sum(child.get_total_overhead_time() for child in self.child_operations)
+        overhead_times = {}
+        self.collect_overhead_times(overhead_times)
+        return sum(overhead_times.values())
+
+    def collect_overhead_times(self, overhead_times):
+        """
+        Add overhead time of this operation and all child operations to collection.
+        Dictionary mapping of operation ID to overhead time for operation is used so overhead time for same operation
+        isn't counted multiple times (for when operation instance is reused in multiple places)
+        :param dict overhead_times: Mapping of operation ID to overhead time for operation
+        :return:
+        """
+        overhead_times[id(self)] = self._overhead_time
+        for child in self.child_operations:
+            child.collect_overhead_times(overhead_times)
 
     def get_cumulative_time(self):
         """
@@ -369,7 +363,7 @@ class BaseOperation(object):
         Get execution time of just this operation (not including any wrapped sub-operations)
         :return:
         """
-        return self.get_cumulative_time() - self._child_execution_cumtime
+        return self.get_cumulative_time() - sum(child_stat[3] for child_stat in self._child_execution_stats.values())
 
     @property
     def pstat_id(self):
@@ -380,15 +374,15 @@ class BaseOperation(object):
         """
         return (type(self).__name__,
                 id(self) if self.unique_pstat else id(type(self)),
-                self.auto_desc(max_len=60))
+                self.auto_desc(max_len=120))
 
     def clear_profile_stats(self):
         """
         Reset execution profiling statistics
         :return:
         """
-        self.profiling_active = self.added_profile_data = False
-        self._cumulative_time = self._call_count = self._child_execution_cumtime = 0
+        self.profiling_active = False
+        self._cumulative_time = self._call_count = self._overhead_time = 0
         self._child_execution_stats = {}
         for operation in self.child_operations:
             operation.clear_profile_stats()
@@ -428,7 +422,7 @@ class BaseOperation(object):
         can get unwieldy
         :return:
         """
-        return type(self).__name__
+        return self.description()
 
     def description(self):
         """
@@ -462,6 +456,7 @@ class Operation(BaseOperation):
      - Perform bitwise operator (vector or scalar) on output of two operations (&, |, ~)
      - Perform arithmetic (vector or scalar) on output of two operations (+, -, *, /)
      - Comparison (>, <, <=, >=, ==)
+    Operation instances are not hashable since they are also not comparable (equality operator overloaded)
     """
 
     # CHAINING
@@ -605,28 +600,17 @@ class OperationsWithOperator(Operation):
         self.op1 = self.add_child_operation(op1)
         self.op2 = self.add_child_operation(op2)
         # Store operator string
-        assert operator_str in self.OPERATORS, '{} is not a valid operator string'.format(operator_str)
+        if operator_str not in self.OPERATORS:
+            raise  ValueError('{} is not a valid operator string'.format(operator_str))
+        self.operator = self.OPERATORS[operator_str]
         self.operator_str = operator_str
 
     def action(self, *args):
         # Apply operator on output of two operands
-        return self.OPERATORS[self.operator_str](self.op1(*args), self.op2(*args))
+        return self.operator(self.op1(*args), self.op2(*args))
 
     def description(self):
         return '({}) {} ({})'.format(self.op1, self.operator_str, self.op2)
-
-    def _op_repr(self, op):
-        """
-        Get string representation for operation or scalar value
-        :param op:
-        :return:
-        """
-        if isinstance(op, Operation):
-            return '({})'.format(op)
-        elif isinstance(op, str):
-            return '"{}"'.format(op)
-        else:
-            return str(op)
 
 
 class SingleOperandOperator(Operation):
@@ -634,7 +618,6 @@ class SingleOperandOperator(Operation):
     Base class for operators which operate on single operand (INVERT, NEG, SLICE)
     Inherits type translations from single contained operation
     """
-    operator_str = None
 
     def __init__(self, op):
         super().__init__()
@@ -643,7 +626,6 @@ class SingleOperandOperator(Operation):
 
 class InvertedOperation(SingleOperandOperator):
     """Bitwise Invert operator (not for boolean)"""
-    operator_str = '~'
 
     def action(self, *args):
         return ~self.operation(*args)
@@ -654,7 +636,6 @@ class InvertedOperation(SingleOperandOperator):
 
 class NegatedOperation(SingleOperandOperator):
     """Invert operator"""
-    operator_str = '-'
 
     def action(self, *args):
         return -self.operation(*args)
@@ -668,7 +649,6 @@ class SlicedOperation(SingleOperandOperator):
     Enables string slicing of operator return value
     Can do vectorised pd.str.slice, or standard string slicing on scalar values
     """
-    operator_str = '[]'
 
     def __init__(self, op, key):
         """
@@ -784,12 +764,6 @@ class Value(Operation):
     Allows specifying static values (strings, numbers, etc) which can be used in arithmetic or comparison with other operations
     Required when using 'in' operator
     """
-    calling_translations = {
-        'dataframe': 'value',
-        'column': 'value',
-        'row': 'value',
-        'value': 'value'
-    }
 
     def __init__(self, value):
         super().__init__()
@@ -805,29 +779,37 @@ class Value(Operation):
 
 class Lambda(Operation):
     """
-    Allows for custom simple transform logic
-    Can optionally provide type translation for compatability validation
-
+    Used to wrap a generic callable as an Operation instance.
     """
 
-    def __init__(self, func, description=None, type_translation=None):
+    def __init__(self, func, description=None):
         """
 
         :param func: Callable which takes input value, performs processing logic and returns output
-        :param str description: Description of what function does
-        :param type_translation: Optionally provide type translation of custom function
+        :param str description: Description of what function does. Function name is used if not specified
         """
         super().__init__()
         self.func = func
         self._description = description or func.__name__
-        if type_translation:
-            self.calling_translations = type_translation
 
     def action(self, *args):
         return self.func(*args)
 
     def description(self):
         return self._description
+
+
+class Pass(Operation):
+    """
+    Acts as a special transparent operation, returns input value with no change, and is removed/ignored in an operation
+    chain. Has a Falsey value (can be used to check if operation exists/does anything)
+    """
+
+    def __bool__(self):
+        return False
+
+    def action(self, value):
+        return value
 
 
 def convert_to_operation(val, none_allowed=False, wrap_value=True):
@@ -853,29 +835,11 @@ def convert_to_operation(val, none_allowed=False, wrap_value=True):
         raise ValueError('Value is not callable: {}'.format(val))
 
 
-def chain_operations(*operations):
-    """
-    Convert a sequence of operations into a single chained operation.
-    Supports providing None values which will be skipped
-    :param operations:
-    :return:
-    """
-    chained_operation = None
-    for operation in operations:
-        if operation is not None:
-            if chained_operation is None:
-                chained_operation = operation
-            else:
-                chained_operation = chained_operation >> operation
-
-    return chained_operation
-
-
 def add_profile_stats(container, pstat_id, new_stats, primary=True):
     """
     Create new stats entry or add to existing
     :param dict container:
-    :param tuple pstat_id:
+    :param int, tuple pstat_id:
     :param tuple new_stats: stats in form (call_count, call_count, tottime, cumtime)
     :param bool primary: Whether this is adding primary pstat (not for caller)
     :return:
@@ -908,36 +872,29 @@ def verify_profile_data(profile_data):
     :return:
     """
     for stat_id, stat_data in profile_data.items():
-        caller_data = stat_data[4].values()
-        if caller_data:
-            # Verify stat data is equal to sum of caller data
+        verify_stat_data(stat_id, stat_data)
+        # Verify caller data
+        if stat_data[4]:
+            caller_data_sum = [0,0,0,0]
+            for caller_id, caller_data in stat_data[4].items():
+                verify_stat_data(caller_id, caller_data)
+                for i in range(4):
+                    caller_data_sum[i] = caller_data_sum[i] + caller_data[i]
+
             for i in range(4):
-                try:
-                    caller_data_sum = sum(verify_positive(cd[i]) for cd in caller_data)
-                except ValueError as e:
-                    caller_data_sum = None
+                if stat_data[i] != caller_data_sum[i]:
+                    raise InvalidProfileDataError(
+                        'Profile data appears to be incorrect for {}:\n{}\n{} != {}'.format(stat_id,
+                                                                                            pprint.pformat(stat_data),
+                                                                                            stat_data[:4],
+                                                                                            caller_data_sum))
 
-                if stat_data[i] != caller_data_sum:
-                    raise Exception('Profile data appears to be incorrect for {}:\n{}\n{} != {}'.format(stat_id,
-                                                                                                        pprint.pformat(stat_data),
-                                                                                                        stat_data[i],
-                                                                                                        caller_data_sum))
-
-
-def verify_positive(val):
-    if val < 0:
-        raise ValueError()
-    return val
-
-
-class Pass(Operation):
+def verify_stat_data(stat_id, stat_data):
     """
-    Acts as a special transparent operation, returns input value with no change, and is removed/ignored in some cases
-    Has a Falsey value (can be used to check if operation exists/does anything)
+    Verify single profile execution stat data
+    :param stat id:
+    :param tuple stat_data: (call_count, call_count, exec time, cum time)
+    :return:
     """
-
-    def __bool__(self):
-        return False
-
-    def action(self, value):
-        return value
+    if any(val < 0 for val in stat_data[:4]) or not stat_data[2] <= stat_data[3]:
+        raise InvalidProfileDataError('Invalid profile stat data: {}: {}'.format(stat_id, stat_data[:4]))

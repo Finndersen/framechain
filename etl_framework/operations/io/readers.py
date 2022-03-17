@@ -118,3 +118,27 @@ class DecompressData(Operation):
 
     def action(self, compressed_data):
         return zlib.decompress(compressed_data, self.COMPRESS_FORMATS[self.format])
+
+
+class BinaryToTextIO(Operation):
+    """
+    Wraps a binary file reader object as a Text IO reader
+    """
+    def __init__(self, encoding=None):
+        """
+
+        :param str encoding:
+        """
+        super().__init__()
+        self.encoding = encoding
+
+    def action(self, binary_reader):
+        return io.TextIOWrapper(binary_reader, encoding=self.encoding)
+
+
+class GzipFileReader(Operation):
+    """
+    Wraps a binary file reader object containing gzipped binary data, returns Gzip binary Reader
+    """
+    def action(self, binary_reader):
+        return gzip.GzipFile(fileobj=binary_reader)

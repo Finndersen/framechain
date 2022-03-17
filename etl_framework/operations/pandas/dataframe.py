@@ -5,7 +5,7 @@ import logging
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 
-from . import Field
+from . import Column
 from .base import DataframeOperation
 
 log = logging.getLogger(__name__)
@@ -237,10 +237,10 @@ class CombineFirst(DataframeOperation):
         Can provide as column name string and will use Field() operation by default
         """
         super().__init__()
-        self.first_operation = self.add_child_operation(Field(first_operation)
+        self.first_operation = self.add_child_operation(Column(first_operation)
                                                         if isinstance(first_operation, str)
                                                         else first_operation)
-        self.second_operation = self.add_child_operation(Field(second_operation)
+        self.second_operation = self.add_child_operation(Column(second_operation)
                                                          if isinstance(second_operation, str)
                                                          else second_operation)
 
@@ -285,6 +285,7 @@ class AlignCategories(DataframeOperation):
     Align the categories of multiple Category type columns
     This will then allow other operations to be performed on the columns (e.g. CombineFirst)
     """
+
     def __init__(self, *category_columns):
         """
 
@@ -311,3 +312,28 @@ class AlignCategories(DataframeOperation):
             dataframe[column_name] = dataframe[column_name].cat.set_categories(all_categories)
 
         return dataframe
+
+
+class CreateDuplicateRows(DataframeOperation):
+    """Create a new data frame by joining original dataframe and part of original dataframe based on condition.
+    Usage data = pd.DataFrame([{'a':1, 'b':2}, {'b':1}, {'a':1}, {'a':1, 'b':1}])
+                CreateDuplicateRows((Column('a')== Column('b')))(data)"""
+
+    def __init__(self, condition):
+        super().__init__()
+        self.condition = self.add_child_operation(condition)
+
+    def action(self, dataframe):
+        mask = self.condition(dataframe)
+
+        if not pd.api.types.is_bool_dtype(mask):
+            self.error(ValueError, 'Condition: {} must return a boolean Series'.format(self.condition))
+
+        if str(mask.dtype) == 'boolean':
+            mask = mask.fillna(False).astype(bool)
+
+        return pd.concat([dataframe, dataframe[mask]], ignore_index=True)
+
+    def description(self):
+        desc = 'Mask input with condition ({})'.format(self.condition)
+        return desc

@@ -3,7 +3,8 @@ from etl_framework.operations import Operation
 
 class TBCDBytesToString(Operation):
     """
-    Convert binary number in Telephony Binary Coded Decimal nibble-swapped format to text string
+    Convert binary number in Telephony Binary Coded Decimal nibble-swapped format to text string, converting any
+    alphabetical characters to uppercase
     This is a format often used to represent MSISDN, IMSI, IMEI numbers in ASN1 encoded data
     e.g. b'\x53\x46\x00\x80\x50\x57\x51\xf0' -> '356400080575150'
     """
@@ -17,7 +18,7 @@ class TBCDBytesToString(Operation):
         # Nibble swap each octet and convert to hex string
         hex_str = bytes((((x & 0x0F) << 4) + (x >> 4)) for x in value).hex().upper()
         # Strip Trailing 'f' blank character (slightly faster than rstrip('f'))
-        if hex_str[-1] == 'F':
+        if hex_str and hex_str[-1] == 'F':
             hex_str = hex_str[:-1]
         return hex_str
 
@@ -107,7 +108,7 @@ class IPv6AddressStringToBinary(Operation):
         :param str ipv6_str:
         :return:
         """
-        return bytes.fromhex(''.join(ipv6_str.split(':')))
+        return bytes.fromhex(''.join(block.zfill(4) for block in ipv6_str.split(':')))
 
 
 class BCDTimestampToString(Operation):

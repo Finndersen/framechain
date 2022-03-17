@@ -69,6 +69,30 @@ class StringContains(ColumnOperation):
         return value.str.contains(self.pattern, regex=self.regex)
 
 
+class StartsWith(Operation):
+    """
+    Check if string column starts with prefix
+    """
+    def __init__(self, prefix):
+        """
+
+        :param str prefix: String prefix
+        """
+        super().__init__()
+        self.prefix = prefix
+
+    def action(self, series):
+        """
+
+        :param pd.Series series:
+        :return:
+        """
+        return series.str.startswith(self.prefix)
+
+    def description(self):
+        return 'Starts with: "{}"'.format(self.prefix)
+
+
 class IsNumeric(ColumnOperation):
     """
     Test whether string column values are numeric

@@ -26,7 +26,7 @@ class RegexExtract(Operation):
         self.compiled_pattern = pattern
 
     def action(self, string_value):
-        match = self.compiled_pattern.match(string_value)
+        match = self.compiled_pattern.search(string_value)
         if match is None:
             return string_value if self.original_if_no_match else None
         else:

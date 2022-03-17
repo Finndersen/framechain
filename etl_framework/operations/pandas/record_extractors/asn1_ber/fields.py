@@ -80,7 +80,7 @@ class IntegerField(IntegerFieldMixin, ASN1BERField):
     """
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, value_converter=BytesToInteger(), **kwargs)
+        super().__init__(*args, value_converter=BytesToInteger(signed=True), **kwargs)
 
 
 class EnumeratedField(IntegerField):

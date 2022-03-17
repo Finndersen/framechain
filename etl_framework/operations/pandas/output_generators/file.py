@@ -11,8 +11,6 @@ class DataFrameToCSVExporter(BaseDataframeExporter):
     Can then use LocalFileWriter to write result to file
     """
 
-    calling_translations = {'dataframe': 'file_data'}
-
     def __init__(self, output=None, columns=None, delimiter=',', line_terminator='\n', create_for_empty=False,
                  **to_csv_kwargs):
         """

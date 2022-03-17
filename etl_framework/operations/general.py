@@ -35,17 +35,13 @@ class ContextValue(Operation):
         return 'Transform Context value: "{}"'.format(self.key_name)
 
 
-class Map(Operation):
+class MapValue(Operation):
     """
     Provide mapping dictionary which will be used to translate values
     Can specify logic for what happens when lookup values are missing (raise error, pass through key, use default)
     """
     ORIGINAL = object()
     ERROR = object()
-
-    calling_translations = {
-        'value': 'value'
-    }
 
     def __init__(self, mapping,  missing_value=ERROR):
         """
@@ -153,7 +149,7 @@ class Filter(Operation):
         :param filter_func: Function to check each value. Returns true for values to be kept
         """
         super().__init__()
-        self.filter_func = filter_func
+        self.filter_func = self.add_child_operation(filter_func)
 
     def action(self, values):
         """
@@ -161,7 +157,7 @@ class Filter(Operation):
         :param iterable values:
         :return:
         """
-        return [val for val in values if self.filter_func(val)]
+        return (val for val in values if self.filter_func(val))
 
     def description(self):
         return 'Filter values using function: "{}"'.format(self.filter_func)
@@ -182,3 +178,19 @@ class Print(Operation):
     def action(self, value):
         print(value)
         return value
+
+
+class RaiseException(Operation):
+    """
+    Raises provided exception
+    """
+    def __init__(self, exception):
+        """
+
+        :param Exception exception: Exception to raise
+        """
+        super().__init__()
+        self.exception =exception
+
+    def action(self, *args):
+        raise self.exception

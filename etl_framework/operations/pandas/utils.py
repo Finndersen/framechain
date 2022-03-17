@@ -218,7 +218,7 @@ def integrate_masked_series(dest_series, new_series, mask):
     result_series.iloc[mask.values] = new_series
 
     # Verify Dtype of original series isn't changed
-    if not is_same_dtype(result_series, dest_series):
+    if not is_same_dtype(result_series, dest_series) and not dest_series.isnull().all():
         raise ChangedDataTypeError(
             'Integrating "{}" series caused dtype to change from "{}" to "{}"'.format(new_series.dtype,
                                                                                       dest_series.dtype,
@@ -226,7 +226,7 @@ def integrate_masked_series(dest_series, new_series, mask):
     return result_series
 
 
-def set_column_on_df(dataframe, column_name, column_data):
+def set_column_on_df(dataframe, column_name, column_data, align_index=True):
     """
     Used to set a column value on a DataFrame
     Column data must be series of same length as DataFrame, and will have index replaced with DF index so values are
@@ -240,6 +240,7 @@ def set_column_on_df(dataframe, column_name, column_data):
     :param pd.DataFrame dataframe:
     :param str column_name:
     :param pd.Series column_data:
+    :param bool align_index: whether to reset index of column data before integrating
     :return:
     """
 
@@ -258,7 +259,8 @@ def set_column_on_df(dataframe, column_name, column_data):
         dataframe[column_name] = np.nan
 
     # Set index so values are integrated as expected
-    column_data.index = dataframe.index
+    if align_index:
+        column_data.index = dataframe.index
 
     dataframe[column_name] = column_data
 

@@ -4,15 +4,18 @@ Operations which are used to help construct more complex field-based transforms 
 import pandas as pd
 from pandas.core.dtypes.common import is_list_like
 
-pd.set_option('mode.chained_assignment', 'raise')  # Raise SetWithCopyError instead of warning
+from etl_framework.exceptions import InvalidOperationError, OperationConfigurationError, ETLError
 from etl_framework.operations import Operation
-from etl_framework.operations.pandas import Field, integrate_masked_series, set_column_on_df
+from etl_framework.operations.pandas import Column, integrate_masked_series, set_column_on_df, DropColumns, DropRows, \
+    RenameColumns
 from etl_framework.utils import randomstring
+
+pd.set_option('mode.chained_assignment', 'raise')  # Raise SetWithCopyError instead of warning
 
 
 class SetColumn(Operation):
     """
-    Set a column/field values using a transformation operation. Creates new column if doesnt already exist in DataFrame
+    Assign a column/field values using a transformation operation. Creates new column if doesnt already exist in DataFrame
     Transformation operation takes DataFrame as input and returns a Series as output (with same length as input DF)
     The index on the resultant Series is reset/ignored
     """
@@ -38,6 +41,7 @@ class SetColumn(Operation):
         # Make copy so changes arent made to original DF
         new_dataframe = dataframe.copy(deep=False)
 
+        # Manually assign new column data instead of using DataFrame.assign() which creates a deep copy and so not efficient
         set_column_on_df(new_dataframe, self.column_name, output_series)
 
         return new_dataframe
@@ -55,7 +59,7 @@ class SetColumn(Operation):
         return 'Set column "{}" value using transform: {}'.format(self.column_name, self.operation)
 
     def short_description(self):
-        return 'Set column "{}" value'.format(self.column_name)
+        return 'Set column "{}" value using transform'.format(self.column_name)
 
 
 def ConvertColumn(column_name, column_transform):
@@ -64,15 +68,15 @@ def ConvertColumn(column_name, column_transform):
     :param str column_name: name of field to convert
     :param column_transform:  Callable which performs transform operation on series and returns transformed series
     """
-    return SetColumn(column_name, Field(column_name) >> column_transform)
+    return SetColumn(column_name, Column(column_name) >> column_transform)
 
 
 class UseColumns(Operation):
     """
-    Select a subset of columns from a DataFrame to apply an operation to, and then re-integrate result back into
-    original DF
-    Allows for better performance of operations applied to entire DF (e.g. Apply, FillNA) when only subset of fields
-    are required
+    Select a subset of columns from a DataFrame to apply an operation to, and then re-integrate
+    result back into original DF. Any new added columns are also included.
+    Allows for better performance of operations applied to entire DF (e.g. Conditional, Apply,
+    FillNA, AsType) when only subset of columns are required
     """
 
     def __init__(self, columns, transform, propagate_dropped_columns=True):
@@ -98,8 +102,7 @@ class UseColumns(Operation):
         full_dataframe = full_dataframe.copy(deep=False)
 
         # Call transform with subset of dataframe columns
-        result_subset_df = self.run_child_operation(self.transform,
-                                                    full_dataframe[self.columns].copy(deep=False))
+        result_subset_df = self.transform(full_dataframe[self.columns].copy(deep=False))
 
         # Integrate result columns back into dataframe (including any extra columns added)
         for column_name in result_subset_df.columns:
@@ -202,26 +205,21 @@ class Apply(Operation):
         return 'Apply to each row: ({}) '.format(self.operation)
 
 
-class Conditional(Operation):
+class SeriesWhere(Operation):
     """
-    Conditional wrapper which takes Dataframe or Series input, applies conditional logic to produce boolean mask,
-    passes masked content to wrapped operation, and then integrates result back into original input.
-    If input is DataFrame, operation can add new columns and/or transform existing
-    Can also provide an inverse operation to apply to the inverted condition content (like If-Else functionality)
-    TODO: Rename to something better
+    Used to conditionally apply an operation to an input series. Provided conditional operation is used to produce
+    boolean mask, masked input series is passed to wrapped operation, and result integrated back into original input.
     """
 
-    def __init__(self, condition, operation, inverse_operation=None):
+    def __init__(self, condition, operation):
         """
 
-        :param condition: Callable which takes Dataframe or column and returns boolean series mask
-        :param operation: Operation to pass masked column to
-        :param inverse_operation: Optional operation to apply to data from inverted mask
+        :param condition: Callable which takes Dataframe or Series and returns boolean series mask
+        :param operation: Transform operation to apply to rows which meet condition
         """
         super().__init__()
         self.operation = self.add_child_operation(operation)
         self.condition = self.add_child_operation(condition)
-        self.inverse_operation = self.add_child_operation(inverse_operation, none_allowed=True)
 
     def action(self, df_or_series):
         """
@@ -243,58 +241,28 @@ class Conditional(Operation):
         # Apply operation to masked DF content
         df_or_series = self.apply_operation_with_mask(df_or_series, self.operation, mask)
 
-        # Apply inverse operation if provided
-        if self.inverse_operation:
-            df_or_series = self.apply_operation_with_mask(df_or_series, self.inverse_operation, ~mask)
-
         return df_or_series
 
-    def apply_operation_with_mask(self, df_or_series, operation, mask):
+    def apply_operation_with_mask(self, series, operation, mask):
         """
         Apply operation to masked subset of input, and integrate result back in
         TODO: Maybe add shortcuts for All or None mask conditions? may just complicate things...
-        :param df_or_series:
+        :param pd.Series series:
         :param operation:
         :param pd.Series mask:
         :return: resultant DF or Series
         """
+        if not isinstance(series, pd.Series):
+            raise TypeError('Expected Series input, not: {}'.format(type(series)))
+
         # Provide masked data to operation (.iloc[mask.values] is a bit faster than .loc[mask])
-        transformed_output = self.run_child_operation(operation,
-                                                      df_or_series.iloc[mask.values])
+        transformed_output = operation(series.iloc[mask.values])
 
-        if isinstance(df_or_series, pd.DataFrame):
-            # Verify output is also DataFrame
-            if not isinstance(transformed_output, pd.DataFrame):
-                raise TypeError(
-                    'Expected DataFrame output from DataFrame input, but got: {}'.format(type(transformed_output)))
-
-            # Make copy to avoid making changes to original DF
-            result_df = df_or_series.copy(deep=False)
-            # Integrate values back into original Dataframe
-            for column_name in transformed_output.columns:
-                # Integrate with existing column (or null series if new column) using mask
-                set_column_on_df(
-                    result_df,
-                    column_name,
-                    integrate_masked_series(
-                        result_df[column_name] if column_name in result_df.columns else
-                        # Create empty null Series to integrate with if column does not already exist
-                        pd.Series(index=result_df.index,
-                                  dtype=transformed_output[column_name].dtype),
-                        transformed_output[column_name],
-                        mask))
-
-            return result_df
-
-        elif isinstance(df_or_series, pd.Series):
-            # Integrate values back into original Series
-            series = integrate_masked_series(df_or_series,
-                                             transformed_output,
-                                             mask)
-            return series
-
-        else:
-            raise TypeError('Expected DataFrame or Series input, not: {}'.format(type(df_or_series)))
+        # Integrate values back into original Series
+        series = integrate_masked_series(series,
+                                         transformed_output,
+                                         mask)
+        return series
 
     def add_to_graph(self, graph):
         # Create Subgraph/cluster to contain wrapped operation
@@ -308,46 +276,158 @@ class Conditional(Operation):
 
     def description(self):
         desc = 'Mask input with condition ({}) and apply ({})'.format(self.condition, self.operation)
-        if self.inverse_operation:
-            desc += ', and apply ({}) to inverted mask'.format(self.inverse_operation)
         return desc
 
     def short_description(self):
-        return 'Apply operation on input with mask condition ({})'.format(self.condition)
+        return 'Apply operation with mask condition ({})'.format(self.condition)
 
 
-class Where(Operation):
+class DFWhere(SeriesWhere):
     """
-    Implements conditional logic
-    Created for test purposes - better to use Conditional which is more flexible and better performance
+    Used to conditionally apply an operation to an input DataFrame. Provided conditional operation is used to produce
+    boolean mask, masked input DataFrame is passed to wrapped operation, and result integrated back into original input.
+    Transform operation can add new columns and/or transform existing.
+
+    By default, attempts to infer which columns are required by and affected/created by provided transforms by checking
+    for instances of Column() and SetColumn() operations. This can result in significantly improved performance by
+    avoiding unnecessary copying and replacing of data. However, if columns are changed or added in some other way then
+    they may be ignored and will need to manually specify list of required_columns and affected_columns
+    (or set to ALL)
     """
-    def __init__(self, condition, true_operation, false_operation):
+    ALL = object()
+
+    def __init__(self, condition, operation, affected_columns=None, required_columns=None):
         """
 
-        :param condition: Callable which takes Dataframe or column and returns boolean series mask
-        :param true_operation: Operation to pass masked column to
-        :param false_operation: Optional operation to apply to data from inverted mask
+        :param condition: Callable which takes Dataframe or Series and returns boolean series mask
+        :param operation: Transform operation to apply to rows which meet condition
+        :param list, None affected_columns: List of columns affected/created by transform
+        By default, will attempt to infer column names by checking for instances of SetColumn operation.
+        :param list, None required_columns: List of columns required as input to conditional transforms
+        By default, will attempt to infer column names by checking for
         """
-        super().__init__()
-        self.true_operation = self.add_child_operation(true_operation)
-        self.condition = self.add_child_operation(condition)
-        self.false_operation = self.add_child_operation(false_operation)
+        super().__init__(condition, operation)
 
-    def action(self, df_or_series):
+        invalid_operations = (DropRows, DropColumns, RenameColumns)
+        if self.search(lambda op: isinstance(op, invalid_operations)):
+            raise InvalidOperationError(
+                'Do not use following operations within DFWhere: {}'.format([op_class.__name__
+                                                                             for op_class in invalid_operations]))
+
+        self.required_columns = self._validate_columns(required_columns if required_columns is not None
+                                                       else self._get_inferred_required_columns())
+        self.affected_columns = self._validate_columns(affected_columns if affected_columns is not None
+                                                       else self._get_inferred_affected_columns())
+
+    def _get_inferred_required_columns(self):
         """
-
-        :param pd.DataFrame df_or_series:
+        Infer columns required by transformation operation
         :return:
         """
-        mask = self.condition(df_or_series)
-        # Perform mask validation
+        # Infer from Column() operations
+        required_columns = set(column_op.column_name for column_op
+                               in self.operation.search(lambda op: isinstance(op, Column)))
+        # Infer from UseColumns() operations
+        if not required_columns:
+            required_columns = set().union(*[usecolumns.columns for usecolumns
+                                             in self.operation.search(lambda op: isinstance(op, UseColumns))])
+        if not required_columns:
+            raise OperationConfigurationError(
+                'Unable to automatically detect columns required by operation: {}.\nPlease specify required_columns or set to ALL'.format(self.operation))
 
-        true_values = self.true_operation(df_or_series)
-        # Perform validation
+        return required_columns
 
-        false_values = self.false_operation(df_or_series)
+    def _get_inferred_affected_columns(self):
+        """
+        Infer columns changed/affected by transformation operation
+        :return:
+        """
+        # Infer from Assign() operations
+        affected_columns = set(setcolumn_op.column_name for setcolumn_op
+                               in self.operation.search(lambda op: isinstance(op, SetColumn)))
+        if not affected_columns:
+            raise OperationConfigurationError(
+                'Unable to automatically detect columns affected by operation: {}.\nPlease specify affected_columns or set to ALL'.format(self.operation))
 
-        return true_values.where(mask, false_values)
+        return affected_columns
+
+    def _validate_columns(self, provided_columns):
+        """
+        Validate columns provided for required_columns or affected_columns
+        :param list, set, tuple provided_columns: Column list provided
+        :param list, set, tuple inferred_columns: Automatically inferred columns
+        :return:
+        """
+        if provided_columns == self.ALL:
+            return provided_columns
+        else:
+            # Validate affected columns format
+            if not isinstance(provided_columns, (set, tuple, list)):
+                raise TypeError('columns should be a sequence, not: "{}"'.format(type(provided_columns)))
+
+            if not all(isinstance(col_name, str) for col_name in provided_columns):
+                raise TypeError('columns should be a sequence of strings, not: "{}"'.format(provided_columns))
+
+            return list(provided_columns)
+
+    def apply_operation_with_mask(self, dataframe, operation, mask):
+        """
+        Apply operation to masked subset of input, and integrate result back in
+        TODO: Maybe add shortcuts for All or None mask conditions? may just complicate things...
+        :param pd.DataFrame dataframe:
+        :param operation:
+        :param pd.Series mask:
+        :return: resultant DF or Series
+        """
+        if not isinstance(dataframe, pd.DataFrame):
+            raise TypeError('Expected DataFrame , not: {}'.format(type(dataframe)))
+
+        # Get filtered input for transformation operation
+        # df.iloc[mask.values] is a bit faster than df.loc[mask]
+        # df.iloc[boolean_mask] routes to df.take() and returns a copy
+        if self.required_columns == self.ALL:
+            # Use all columns
+            transform_input = dataframe.iloc[mask.values]
+        else:
+            # Use only columns required by transformation operation
+            # selecting required fields first then doing iloc is faster and more memory efficient than
+            # doing combined df.loc(mask, columns)
+            transform_input = dataframe[self.required_columns].iloc[mask.values]
+
+        transformed_output = operation(transform_input)
+
+        # Verify output is also DataFrame
+        if not isinstance(transformed_output, pd.DataFrame):
+            raise TypeError(
+                'Expected DataFrame output from DataFrame input, but got: {}'.format(type(transformed_output)))
+
+        # Make copy to avoid making changes to original DF
+        result_df = dataframe.copy(deep=False)
+        # Integrate values back into original Dataframe
+        for column_name in transformed_output.columns:
+            # Only update column data if new or in affected column list
+            if ((self.affected_columns == self.ALL) or
+                    (column_name not in result_df.columns) or
+                    (column_name in self.affected_columns)):
+                try:
+                    # Integrate with existing column (or null series if new column) using mask
+                    set_column_on_df(
+                        result_df,
+                        column_name,
+                        integrate_masked_series(
+                            result_df[column_name] if column_name in result_df.columns else
+                            # Create empty null Series to integrate with if column does not already exist
+                            pd.Series(index=result_df.index,
+                                      dtype=transformed_output[column_name].dtype),
+                            transformed_output[column_name],
+                            mask))
+                except Exception as exc:
+                    raise ETLError('Error while assigning column: "{}" on DataFrame.\n{}: {}'.format(
+                        column_name,
+                        type(exc).__name__,
+                        str(exc))) from exc
+
+        return result_df
 
 
 class ConstructDataFrame(Operation):

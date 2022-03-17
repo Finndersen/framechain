@@ -1,4 +1,4 @@
-from etl_framework.exceptions import ETLError
+from etl_framework.exceptions import *
 
 
 class MaskMismatchError(ETLError):
@@ -14,6 +14,7 @@ class LengthMismatchError(ETLError):
     """
     pass
 
+
 class ChangedDataTypeError(ETLError):
     """
     Error for when operation changes datatype in masked transformation
@@ -24,5 +25,12 @@ class ChangedDataTypeError(ETLError):
 class DTypeError(TypeError, ETLError):
     """
     Error for mismatching padnas datatype
+    """
+    pass
+
+
+class InvalidColumnError(ETLError):
+    """
+    Error for when expected column is missing in DF
     """
     pass

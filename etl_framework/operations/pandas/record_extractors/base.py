@@ -101,17 +101,17 @@ class BaseDataFrameGenerator(Operation):
         """
         return dataframe[[field.name for field in self.fields if field.post_process]]
 
-    def get_execute_time(self):
-        """
-        Get execute time of just this operation (not including any wrapped sub-operations)
-        Need to get execution time of fields because do not have visibility of value conversion execute time
-        Assumes Field instances are not re-used elsewhere...
-        :return:
-        """
-        exec_time = self.get_cumulative_time()
-        for op in self.child_operations:
-            exec_time -= op.get_cumulative_time()
-        return exec_time
+    # def get_execute_time(self):
+    #     """
+    #     Get execute time of just this operation (not including any wrapped sub-operations)
+    #     Need to get execution time of fields because do not have visibility of value conversion execute time
+    #     Assumes Field instances are not re-used elsewhere...
+    #     :return:
+    #     """
+    #     exec_time = self.get_cumulative_time()
+    #     for op in self.child_operations:
+    #         exec_time -= op.get_cumulative_time()
+    #     return exec_time
 
     # def get_child_operation_stats(self, child_operation):
     #     """
@@ -167,8 +167,14 @@ class IterableRecordsDataframeGenerator(BaseDataFrameGenerator):
             records = self.get_records(input_data)
 
         # Build list of sub-dataframes and Join together into one dataframe
-        dataframe = concat_dataframes([self.post_process_dataframe(self.create_dataframe(records_chunk))
-                                       for records_chunk in chunks(records, self.chunk_size)])
+        dataframes = [self.post_process_dataframe(self.create_dataframe(records_chunk))
+                      for records_chunk in chunks(records, self.chunk_size)]
+
+        if dataframes:
+            dataframe = concat_dataframes(dataframes)
+        else:
+            # No records, make empty dataframe
+            dataframe = self.create_dataframe([])
 
         # Order fields
         dataframe = self.order_fields(dataframe)
@@ -207,8 +213,8 @@ class InputField(BaseOperation):
     EMPTY_VALUES = {''}
     extract = True
 
-    def __init__(self, name, mandatory=False, column_converter=None, value_converter=None, ignore_condition=None,
-                 dtype=None, categorical=False, post_process=True):
+    def __init__(self, name, mandatory=False, column_converter=None, value_converter=None,
+                 ignore_condition=None, dtype=None, categorical=False, post_process=True):
         """
 
         :param str name: Name of field
@@ -309,6 +315,7 @@ class IntegerFieldMixin(object):
     """
     Mixin for integer type fields
     Adds column converter to convert to nullable integer type if field is float type (due to null values)
+    Value converter should return values as numeric (int/float or None)
     """
 
     def __init__(self, *args, size=32, **kwargs):

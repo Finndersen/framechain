@@ -17,7 +17,7 @@ class Floor(ColumnOperation):
 class ToNumeric(ColumnOperation):
     """
     Convert column to numeric, with downcast support
-    Downcast does not work on nullable integer type (Int8-64) if it contains Null values (but does work if it doesnt)
+    Downcast does not work on nullable integer type (Int8-64) if it contains Null values
     """
     changes_type = True
 
@@ -38,23 +38,36 @@ class ToNumeric(ColumnOperation):
         return pd.to_numeric(column, downcast=self.downcast, errors=self.errors)
 
 
-def ToNullableInteger(size=32):
+INTEGER_SIZES = [8, 16, 32, 64]
+
+
+class ToNullableInteger(ColumnOperation):
     """
-    Create transform to convert column to nullable Integer type
+    Convert column to nullable Integer type
     Normally if source data for 'integer' field contains null values, pandas will convert Series type to float
     (normal integer type cannot represent null values)
     This converter changes dtype to new nullable integer type ('Int8-64'), if float conversion has occurred
 
-    :param int size: Integer size in bits
-    8: -128 to 127
-    16: -32,768 to 32,767
-    32: -2,147,483,648 to 2,147,483,647
-    64: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807
-    :param bool ignore_errors: If true, any non-numeric input values that fail to convert to Numeric will be set as NaN
     """
-    valid_sizes = [8, 16, 32, 64]
+    def __init__(self, size=32):
+        """
 
-    if size not in valid_sizes:
-        raise ValueError('Invalid integer bit size: {} Choose from: {}'.format(size, valid_sizes))
+        :param int size: Integer size in bits
+        8: -128 to 127
+        16: -32,768 to 32,767
+        32: -2,147,483,648 to 2,147,483,647
+        64: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807
+        :param size:
+        """
+        super().__init__()
+        if size not in INTEGER_SIZES:
+            raise ValueError('Invalid integer bit size: {} Choose from: {}'.format(size, INTEGER_SIZES))
+        self.size = size
 
-    return ToNumeric() >> AsType('Int{}'.format(size))
+    def action(self, number_column):
+        try:
+            return number_column.astype('Int{}'.format(self.size))
+        except TypeError:
+            # Try flooring values first if direct casting fails
+            return np.floor(number_column).astype('Int{}'.format(self.size))
+

@@ -3,11 +3,24 @@ class ETLError(Exception):
     pass
 
 
+class InvalidProfileDataError(ETLError):
+    """
+    Exception for when Profile data is invalid
+    """
+    pass
+
 class FileAlreadyExistsError(ETLError):
     pass
 
 
 class OperationConfigurationError(ETLError):
+    pass
+
+
+class InvalidOperationError(ETLError):
+    """
+    Error for when operation is not allowed
+    """
     pass
 
 
