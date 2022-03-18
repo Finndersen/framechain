@@ -3,8 +3,9 @@ import pandas as pd
 
 from etl_framework.exceptions import OperationConfigurationError
 from etl_framework.operations.io import TextReader
-from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, \
-    TimestampFieldMixin, IntegerFieldMixin
+from etl_framework.operations.pandas.record_extractors.base import InputField, \
+    BaseDataFrameGenerator, \
+    TimestampFieldMixin, IntegerFieldMixin, NumberFieldMixin
 from etl_framework.operations.transforms import BytesToString
 
 
@@ -68,17 +69,25 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
         converters = {field.column_id: field.convert_value
                       for field in extract_fields if field.value_converter}
 
+        # Detect whether bad lines (longer or shorter than expected) should be skipped
+        skip_bad_lines = (self.read_csv_kwargs.get('on_bad_lines', None) == 'skip'
+                          or not self.read_csv_kwargs.get('error_bad_lines', True))
+
         dataframe = pd.read_csv(file_data,
                                 sep=self.delimiter,
                                 header=0 if self.header else None,
                                 dtype=dtypes,
                                 converters=converters,
+                                # usecols breaks bad line skipping so dont use if skip_bad_lines
+                                usecols=[field.column_id for field in extract_fields]
+                                if not skip_bad_lines else None,
                                 **self.read_csv_kwargs)
 
-        # Select required columns from dataframe. Do this here instead of using 'usecols' in pd.read_csv() because
-        # it disables functionality of error_bad_lines=False or on_bad_lines='skip'
-        # If file has headers, use_columns is list of field names (str), otherwise list of field positions (int)
-        dataframe = dataframe[[field.column_id for field in extract_fields]]
+        if skip_bad_lines:
+            # If skipping bad lines, need to select columns here because 'usecols' in read_csv()
+            # does not work with error_bad_lines=False or on_bad_lines='skip'
+            # https://github.com/pandas-dev/pandas/issues/40049
+            dataframe = dataframe[[field.column_id for field in extract_fields]]
 
         # Rename columns to actual field names
         renames = {field.column_id: field.name
@@ -101,7 +110,8 @@ class CSVField(InputField):
     - cannot specify both value_converter and read_type (converter takes precendence)
     """
 
-    def __init__(self, name, column_id=None, dtype=None, read_dtype=None, value_converter=None, **kwargs):
+    def __init__(self, name, column_id=None, dtype=None, read_dtype=None, value_converter=None,
+                 **kwargs):
         """
 
         :param str name: Name of field
@@ -116,6 +126,7 @@ class CSVField(InputField):
                 raise OperationConfigurationError(
                     'Do not specify both value_converter and read_dtype for CSVField: "{}"'.format(name))
         elif read_dtype is None:
+            # read_dtype defaults to output dtype if not specified
             read_dtype = dtype
         self.read_dtype = read_dtype
 
@@ -129,21 +140,39 @@ class StringField(CSVField):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args,
-                         dtype=object, **kwargs)
+                         dtype=object,
+                         **kwargs)
 
 
 class IntegerField(IntegerFieldMixin, CSVField):
     """
     Field which converts values to Nullable Integer type
     """
-    pass
+
+    def __init__(self, *args, size=32, **kwargs):
+        super().__init__(*args,
+                         size=size,
+                         read_dtype='Int{}'.format(size),
+                         **kwargs)
 
 
-class TimestampField(TimestampFieldMixin, CSVField):
+class NumberField(NumberFieldMixin, CSVField):
     """
-    Field which converts values to Timestamp. Read values as string for conversion
+    Field which converts values to Numeric type (does not support nullable integer)
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args,
-                         read_dtype=object, **kwargs)
+                         read_dtype=float,
+                         **kwargs)
+
+
+class TimestampField(TimestampFieldMixin, CSVField):
+    """
+    Field which converts values to Timestamp. Read values as string for parsing
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,
+                         read_dtype=object,
+                         **kwargs)

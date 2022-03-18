@@ -313,7 +313,7 @@ class NonExtractedField(InputField):
 
 class IntegerFieldMixin(object):
     """
-    Mixin for integer type fields
+    Mixin for nullable integer type fields
     Adds column converter to convert to nullable integer type if field is float type (due to null values)
     Value converter should return values as numeric (int/float or None)
     """
@@ -324,6 +324,17 @@ class IntegerFieldMixin(object):
         :param int size: Whether to use large integer (64 bits instead of 32)
         """
         super().__init__(*args, column_converter=ToNullableInteger(size=size), **kwargs)
+
+
+class NumberFieldMixin(object):
+    """
+    Mixin for number fields (either decimal or integer, but does not support nullable integer)
+    """
+    def __init__(self, *args, downcast='integer', **kwargs):
+        """
+        :param str downcast:
+        """
+        super().__init__(*args, column_converter=ToNumeric(downcast=downcast), **kwargs)
 
 
 class TimestampFieldMixin(object):
