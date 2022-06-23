@@ -1,19 +1,21 @@
 """
 Operations which are used to help construct more complex field-based transforms with masking capability
 """
+import inspect
+
 import pandas as pd
 from pandas.core.dtypes.common import is_list_like
 
 from etl_framework.exceptions import InvalidOperationError, OperationConfigurationError, ETLError
 from etl_framework.operations import Operation
-from etl_framework.operations.pandas import Column, integrate_masked_series, set_column_on_df, DropColumns, DropRows, \
-    RenameColumns
+from etl_framework.operations.pandas import Column, integrate_masked_series, set_column_on_df, \
+    DropColumns, DropRows, RenameColumns, Explode, DataframeOperation
 from etl_framework.utils import randomstring
 
 pd.set_option('mode.chained_assignment', 'raise')  # Raise SetWithCopyError instead of warning
 
 
-class SetColumn(Operation):
+class SetColumn(DataframeOperation):
     """
     Assign a column/field values using a transformation operation. Creates new column if doesnt already exist in DataFrame
     Transformation operation takes DataFrame as input and returns a Series as output (with same length as input DF)
@@ -61,6 +63,9 @@ class SetColumn(Operation):
     def short_description(self):
         return 'Set column "{}" value using transform'.format(self.column_name)
 
+    def get_required_columns(self):
+        return []
+
 
 def ConvertColumn(column_name, column_transform):
     """
@@ -71,7 +76,71 @@ def ConvertColumn(column_name, column_transform):
     return SetColumn(column_name, Column(column_name) >> column_transform)
 
 
-class UseColumns(Operation):
+class MapToColumns(DataframeOperation):
+    """
+    Apply a mapping function to a selection of dataframe columns to create a new Series
+    The mapping function will be called for each row, and provided values of the specified columns
+    as arguments. Should return a single value, which will be used as the row value for the
+    output Series.
+
+    :param func map_func: Mapping Function
+    :param list/tuple/str columns: Dataframe column/s to use in a mapping function. If not
+    specified, will use argument names of map_func
+    """
+
+    def __init__(self, map_func, columns=None, result_dtype=None):
+        """
+
+        :param map_func: Function to map to DataFrame column values
+        :param list|None columns:
+        :param result_dtype: dtype for result output Series (None to infer)
+        """
+        super().__init__()
+
+        if not callable(map_func):
+            raise ValueError("{} is not callable".format(map_func))
+
+        func_args = inspect.getfullargspec(map_func).args
+        if columns is None:
+            # Use function argument names as columns
+            columns = func_args
+        elif isinstance(columns, str):
+            columns = [columns]
+
+        if not isinstance(columns, (list, tuple)):
+            raise TypeError('Columns must be provided as list or  tuple')
+
+        if len(columns) == 1:
+            raise Exception('Should use Apply() operation for a single column')
+
+        if len(columns) != len(func_args):
+            raise ValueError('Number of specified columns ({}) is not equal to number of function arguments ({})'.format(len(columns),
+                                                                                                                         len(func_args)))
+
+        self.columns = columns
+        self.map_func = map_func
+        self.result_dtype = result_dtype
+
+    def action(self, dataframe):
+        """
+
+        :param DataFrame dataframe:
+        :return:
+        """
+        return pd.Series(data=map(self.map_func,
+                                  *(dataframe[column_name] for column_name in self.columns)),
+                         index=dataframe.index,
+                         dtype=self.result_dtype)
+
+    def description(self):
+        return 'Maps the function {} to columns: {}'.format(self.map_func.__name__,
+                                                            repr(self.columns))
+
+    def get_required_columns(self):
+        return self.columns
+
+
+class UseColumns(DataframeOperation):
     """
     Select a subset of columns from a DataFrame to apply an operation to, and then re-integrate
     result back into original DF. Any new added columns are also included.
@@ -100,7 +169,6 @@ class UseColumns(Operation):
         """
         # Make shallow copy so changes arent made to original DF
         full_dataframe = full_dataframe.copy(deep=False)
-
         # Call transform with subset of dataframe columns
         result_subset_df = self.transform(full_dataframe[self.columns].copy(deep=False))
 
@@ -110,10 +178,15 @@ class UseColumns(Operation):
 
         # Remove any deleted columns
         if self.propagate_dropped_columns:
-            full_dataframe = full_dataframe.drop(columns=[column_name for column_name in self.columns
-                                                          if column_name not in result_subset_df.columns])
+            full_dataframe = full_dataframe.drop(columns=[column_name
+                                                          for column_name in self.columns
+                                                          if column_name
+                                                          not in result_subset_df.columns])
 
         return full_dataframe
+
+    def get_required_columns(self):
+        return self.columns
 
 
 class SetField(Operation):
@@ -143,30 +216,19 @@ class SetField(Operation):
 
 class Apply(Operation):
     """
-    Apply an operation to each element of input vector (DataFrame or Series) and return a resultant vector
-    with transformed values.
-    Can use in combination with Conditional() operation to apply to subset of vector input, e.g. skip null values
-
-    When doing Apply() on Dataframe (iterating through Rows):
-    - If transform returns a Series for each row, end result will be a DataFrame
-    - Otherwise, end result will be Series of values returned from transform
-    - Can use ApplyToColumns to select only the columns required by the transform for better performance
-    - Do not add new fields to Series within the transform (performance is very bad).
-    Best to pre-populate with null column beforehand
-    - Series indexing in general has poor performance, best to convert from Series to Array or list
-    (Series.values or Series.values.tolist()), use that within transform, then return list/array, resulting in a Series
-    of lists/arrays which can be used to construct a new Dataframe with same columns as input. E.g.:
-    Apply(transform_operation) >> ToList() >> ConstructDataFrame(columns=COLUMNS_OF_OUTPUT)
+    Apply an operation to each element of input vector Series and return a resultant Series with
+    transformed values. Can use in combination with Conditional() operation to apply to subset of
+    input, e.g. skip null values
     """
 
-    def __init__(self, operation, error_if_field_added=True, fast=False):
+    def __init__(self, operation, fast=True, convert_dtype=False, **kwargs):
         """
-        :param operation: Operation to apply to each element of vector
-        :param bool error_if_field_added: Whether to raise error if result is DataFrame with additional field added.
-        (Due to poor performance, should initialise blank placeholder column first) Can disable if result DF is
-        constructed from arrays instead of adding extra fields to Series.
-        :param bool fast: Whether to skip wrapping provided function as an operation for less overheads and better
-        performance (does nothing if Operation instance provided)
+        :param operation: Operation to apply to each element of Series
+        :param bool fast: If true and plain function is provided (not Operation instance), do not
+        wrap function as Operation (avoids profiling for better performance)
+        :param bool convert_dtype: Whether to try infer dtype for results. Default to False for
+        better performance and avoid unexpected behaviour
+        :param kwargs: Extra key-word arguments to provide to apply()
         """
         super().__init__()
         # Don't wrap and register provided function in fast mode (to avoid overheads)
@@ -178,28 +240,17 @@ class Apply(Operation):
         if is_list_like(self.operation):
             raise TypeError('Do not provide list-like value to Apply: {}'.format(self.operation))
 
-        self.error_if_field_added = error_if_field_added
+        self.convert_dtype = convert_dtype
+        self.kwargs = kwargs
 
-    def action(self, df_or_series):
+    def action(self, series):
         """
-        :param df_or_series: Dataframe or Column (series)
+        :param pd.Series series:
         :return:
         """
-        # Apply to DataFrame
-        if isinstance(df_or_series, pd.DataFrame):
-            result = df_or_series.apply(self.operation, axis=1)
-            # Raise error if output is DF with new columns added (poor performance)
-            if self.error_if_field_added and isinstance(result, pd.DataFrame) and any(column not in df_or_series.columns
-                                                                                      for column in result.columns):
-                raise Exception('Applied transform ({}) adds a new field, which has very poor performance. '
-                                'Best to initialise the field as a blank column beforehand'.format(self.operation))
-
-            return result
-        # Apply to Series
-        elif isinstance(df_or_series, pd.Series):
-            return df_or_series.apply(self.operation)
-        else:
-            self.error(TypeError, 'Input should be DataFrame or Series')
+        return series.apply(self.operation,
+                            convert_dtype=self.convert_dtype,
+                            **self.kwargs)
 
     def description(self):
         return 'Apply to each row: ({}) '.format(self.operation)
@@ -282,7 +333,7 @@ class SeriesWhere(Operation):
         return 'Apply operation with mask condition ({})'.format(self.condition)
 
 
-class DFWhere(SeriesWhere):
+class DFWhere(SeriesWhere, DataframeOperation):
     """
     Used to conditionally apply an operation to an input DataFrame. Provided conditional operation is used to produce
     boolean mask, masked input DataFrame is passed to wrapped operation, and result integrated back into original input.
@@ -292,9 +343,8 @@ class DFWhere(SeriesWhere):
     for instances of Column() and SetColumn() operations. This can result in significantly improved performance by
     avoiding unnecessary copying and replacing of data. However, if columns are changed or added in some other way then
     they may be ignored and will need to manually specify list of required_columns and affected_columns
-    (or set to ALL)
+    (or set to ALL_COLUMNS)
     """
-    ALL = object()
 
     def __init__(self, condition, operation, affected_columns=None, required_columns=None):
         """
@@ -308,15 +358,19 @@ class DFWhere(SeriesWhere):
         """
         super().__init__(condition, operation)
 
-        invalid_operations = (DropRows, DropColumns, RenameColumns)
+        invalid_operations = (DropRows, DropColumns, RenameColumns, Explode)
         if self.search(lambda op: isinstance(op, invalid_operations)):
             raise InvalidOperationError(
                 'Do not use following operations within DFWhere: {}'.format([op_class.__name__
                                                                              for op_class in invalid_operations]))
 
-        self.required_columns = self._validate_columns(required_columns if required_columns is not None
+        self.required_columns = self._validate_columns(required_columns
+                                                       if required_columns is not None
                                                        else self._get_inferred_required_columns())
-        self.affected_columns = self._validate_columns(affected_columns if affected_columns is not None
+        if self.required_columns == self.ALL_COLUMNS:
+            print('Using all columns: {}'.format(self))
+        self.affected_columns = self._validate_columns(affected_columns
+                                                       if affected_columns is not None
                                                        else self._get_inferred_affected_columns())
 
     def _get_inferred_required_columns(self):
@@ -324,16 +378,18 @@ class DFWhere(SeriesWhere):
         Infer columns required by transformation operation
         :return:
         """
-        # Infer from Column() operations
-        required_columns = set(column_op.column_name for column_op
-                               in self.operation.search(lambda op: isinstance(op, Column)))
-        # Infer from UseColumns() operations
-        if not required_columns:
-            required_columns = set().union(*[usecolumns.columns for usecolumns
-                                             in self.operation.search(lambda op: isinstance(op, UseColumns))])
+        # Get full list of columns required by sub-operations
+        required_columns = set()
+        for operation in self.operation.search(lambda op: isinstance(op, DataframeOperation)):
+            cols = operation.get_required_columns()
+            if cols == self.ALL_COLUMNS:
+                return cols
+            elif cols:
+                required_columns.update(cols)
+
         if not required_columns:
             raise OperationConfigurationError(
-                'Unable to automatically detect columns required by operation: {}.\nPlease specify required_columns or set to ALL'.format(self.operation))
+                'Unable to automatically detect columns required by operation: {}.\nPlease specify required_columns (or set to ALL_COLUMNS or NO_COLUMNS)'.format(self.operation))
 
         return required_columns
 
@@ -342,7 +398,7 @@ class DFWhere(SeriesWhere):
         Infer columns changed/affected by transformation operation
         :return:
         """
-        # Infer from Assign() operations
+        # Infer from SetColumn() operations
         affected_columns = set(setcolumn_op.column_name for setcolumn_op
                                in self.operation.search(lambda op: isinstance(op, SetColumn)))
         if not affected_columns:
@@ -358,7 +414,7 @@ class DFWhere(SeriesWhere):
         :param list, set, tuple inferred_columns: Automatically inferred columns
         :return:
         """
-        if provided_columns == self.ALL:
+        if provided_columns in [self.ALL_COLUMNS, self.NO_COLUMNS]:
             return provided_columns
         else:
             # Validate affected columns format
@@ -385,9 +441,12 @@ class DFWhere(SeriesWhere):
         # Get filtered input for transformation operation
         # df.iloc[mask.values] is a bit faster than df.loc[mask]
         # df.iloc[boolean_mask] routes to df.take() and returns a copy
-        if self.required_columns == self.ALL:
+        if self.required_columns == self.ALL_COLUMNS:
             # Use all columns
             transform_input = dataframe.iloc[mask.values]
+        elif self.required_columns == self.NO_COLUMNS:
+            # Transform input is empty masked dataframe
+            transform_input = dataframe[[]].iloc[mask.values]
         else:
             # Use only columns required by transformation operation
             # selecting required fields first then doing iloc is faster and more memory efficient than
@@ -406,7 +465,7 @@ class DFWhere(SeriesWhere):
         # Integrate values back into original Dataframe
         for column_name in transformed_output.columns:
             # Only update column data if new or in affected column list
-            if ((self.affected_columns == self.ALL) or
+            if ((self.affected_columns == self.ALL_COLUMNS) or
                     (column_name not in result_df.columns) or
                     (column_name in self.affected_columns)):
                 try:
@@ -428,6 +487,10 @@ class DFWhere(SeriesWhere):
                         str(exc))) from exc
 
         return result_df
+
+    def get_required_columns(self):
+        # This operation does not require columns directly (its suboeprations do)
+        return []
 
 
 class ConstructDataFrame(Operation):

@@ -55,18 +55,20 @@ class StringContains(ColumnOperation):
     """
     Test whether string column values contain pattern or regex
     """
-    def __init__(self, pattern, regex=False):
+    def __init__(self, pattern, regex=False, na=None):
         """
 
         :param str pattern: search pattern
         :param bool regex: Whether pattern is regex
+        :param scalar regex: Specifies what scalar NA values should be filled with
         """
         super().__init__()
         self.pattern = pattern
         self.regex = regex
+        self.na = na
 
     def action(self, value):
-        return value.str.contains(self.pattern, regex=self.regex)
+        return value.str.contains(self.pattern, regex=self.regex, na=self.na)
 
 
 class StartsWith(Operation):

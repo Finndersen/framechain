@@ -194,3 +194,42 @@ class RaiseException(Operation):
 
     def action(self, *args):
         raise self.exception
+
+
+class CallMethod(Operation):
+    """
+    Call a method on input object (e.g. Series or Dataframe)
+    Method name is provided as string and can contain chained references, e.g. 'attr.method'
+    Can also specify args and kwargs to provide to method call
+    """
+    def __init__(self, method_name, *args, **kwargs):
+        """
+
+        :param str method_name: Name of method to call (can contain dots for chained reference)
+        :param args: Positional arguments to provide
+        :param kwargs: Keyword arguments to provide
+        """
+        super().__init__()
+        self.method_name = method_name
+        self.args = args
+        self.kwargs = kwargs
+
+    def action(self, obj):
+        """
+        Input object to call method on
+        :param obj:
+        :return:
+        """
+        method = obj
+        for method_component in self.method_name.split('.'):
+            method = getattr(method, method_component)
+
+        return method(*self.args, **self.kwargs)
+
+    def description(self):
+        desc = 'Call method: "{}"'.format(self.method_name)
+        if self.args:
+            desc += ' with args: {}'.format(self.args)
+        if self.kwargs:
+            desc += ' and kwargs: {}'.format(self.kwargs)
+        return desc

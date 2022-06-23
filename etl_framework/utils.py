@@ -99,9 +99,11 @@ def convert_timezone(tz, allow_none=False):
     (which has .localize() method so dont need to differentiate between static vs dynamic UTC offset timezones)
     Can be supplied as either:
     - Timezone name as string
-    - UTC Offset in seconds as integer
+    - UTC offset as string in format: +/-HH:MM
+    - UTC Offset in minutes as integer
     - UTC offset as timedelta
     - tzinfo instance (datetime.timezone, pytz.timezone, dateutil.tz.tz.tzoffset etc)
+    TODO: Migrate away from using pytz and use zoneinfo instead?
     :param tz:
     :param allow_none: Whether None value is allowed to be provided and passed through
     :return:
@@ -110,15 +112,22 @@ def convert_timezone(tz, allow_none=False):
         return None
 
     if isinstance(tz, str):
-        # Construct from timezone string
-        tz = pytz.timezone(tz)
+        if ':' in tz:
+            # From UTC offset string
+            offset_minutes = int(tz[1:3])*60 + int(tz[4:6])
+            if tz[0] == '-':
+                offset_minutes = -offset_minutes
+            return pytz.FixedOffset(offset_minutes)
+        else:
+            # Construct from timezone string
+            tz = pytz.timezone(tz)
 
     elif isinstance(tz, int):
-        # Construct static-offset timezone from UTC Offset in seconds
-        tz = StaticOffsetTz(timedelta(seconds=tz))
+        # Construct static-offset timezone from UTC Offset in minutes
+        tz = pytz.FixedOffset(tz)
 
     elif isinstance(tz, timedelta):
-        tz = StaticOffsetTz(tz)
+        tz = pytz.FixedOffset(tz.total_seconds()/60)
 
     if isinstance(tz, BaseTzInfo):
         # Is subclass of BaseTzInfo so has .localize() method as desired
@@ -126,7 +135,7 @@ def convert_timezone(tz, allow_none=False):
 
     if isinstance(tz, tzinfo):
         # Construct StaticTz instance from other tzinfo type (e.g. datetime.timezone, dateutil.tz.tz.tzinfo)
-        return StaticOffsetTz(tz.utcoffset(None), name=tz.tzname(None))
+        return pytz.FixedOffset(tz.utcoffset(None).total_seconds()/60)
 
     raise TypeError('Invalid timezone value: {}'.format(tz))
 
@@ -138,7 +147,7 @@ def StaticOffsetTz(utcoffset, name=None):
     "Special requirement for pickling: A tzinfo subclass must have an __init__() method that can be called with no
     arguments, otherwise it can be pickled but possibly not unpickled again"
 
-    :param utcoffset:
+    :param datetime.timedelta utcoffset:
     :param name:
     :return:
     """

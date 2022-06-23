@@ -2,7 +2,7 @@ from unittest import TestCase
 from datetime import timedelta, timezone, datetime
 import pytz
 
-from etl_framework.utils import StaticOffsetTz, convert_timezone, chunks
+from etl_framework.utils import convert_timezone, chunks
 
 
 class UtilsTests(TestCase):
@@ -24,10 +24,12 @@ class UtilsTests(TestCase):
         test_data = [
             ['Australia/Victoria', pytz.timezone('Australia/Victoria')],                            # TZ str
             ['UTC', pytz.utc],                                                                      # UTC Str
-            [10 * 60 * 60, StaticOffsetTz(timedelta(seconds=10 * 60 * 60))],                                # Int
-            [timedelta(seconds=10*60*60), StaticOffsetTz(timedelta(seconds=10 * 60 * 60))],          # timedelta
+            [10 * 60, pytz.FixedOffset(10 * 60)],                                # Int
+            [timedelta(minutes=10*60), pytz.FixedOffset(10 * 60)],          # timedelta
             [pytz.timezone('Australia/Victoria'), pytz.timezone('Australia/Victoria')],          # pytz.timezone
-            [timezone(timedelta(seconds=10*60*60)), StaticOffsetTz(timedelta(seconds=10 * 60 * 60))] # other tzinfo object
+            [timezone(timedelta(minutes=10*60)), pytz.FixedOffset(10 * 60)], # other tzinfo object
+            ['+11:00', pytz.FixedOffset(11 * 60)],
+            ['-11:00', pytz.FixedOffset(-11 * 60)]
         ]
         dt = datetime(2020, 12, 1, 12, 30, 0)
 

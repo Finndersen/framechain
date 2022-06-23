@@ -68,9 +68,10 @@ class ToTimedelta(ColumnOperation):
 
     def action(self, column):
         # Verify that column is numeric is unit is specified (earlier versions of pandas do not perform this check)
-        if self.units and not is_numeric_dtype(column):
-            raise TypeError('Input must be numeric when units are specified')
-        return pd.to_timedelta(column, unit=self.units, errors='coerce' if self.coerce_errors else 'raise')
+        # if self.units and not is_numeric_dtype(column):
+        #     raise TypeError('Input must be numeric when units are specified')
+        return pd.to_timedelta(column, unit=self.units,
+                               errors='coerce' if self.coerce_errors else 'raise')
 
     def description(self):
         return "Value to timedelta with units: {}".format(self.units)
@@ -99,7 +100,8 @@ class TimestampFromColumns(Operation):
 #############################################################################################################
 class SetColumnTimezone(SetTimezoneNormal):
     """
-    Add timezone information to existing naive timestamp column, or remove timezone info from aware timestamp column
+    Add timezone information to existing naive timestamp column, or remove timezone info from
+    aware timestamp column
     """
 
     def action(self, timestamp_column):

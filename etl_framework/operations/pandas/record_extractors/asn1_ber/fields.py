@@ -1,5 +1,5 @@
 from etl_framework.operations import profiled, BinaryDurationToInt
-from etl_framework.operations.pandas import ColumnToDatetime, ColumnMap, ToNullableInteger
+from etl_framework.operations.pandas import ColumnToDatetime, MapColumnValues, ToNullableInteger
 from .exceptions import MultipleValueError
 from etl_framework.operations.pandas.record_extractors.base import InputField, IntegerFieldMixin
 from etl_framework.operations.transforms import BytesToString, BytesToBoolean, BytesToInteger, BytesToDate, \
@@ -95,7 +95,7 @@ class EnumeratedField(IntegerField):
         :param dict mapping: enumeration mapping (of integer values to string representation)
         :param kwargs:
         """
-        super().__init__(name, asn_id, column_converter=ColumnMap(mapping), dtype=object, **kwargs)
+        super().__init__(name, asn_id, column_converter=MapColumnValues(mapping), dtype=object, **kwargs)
 
 
 class StringField(ASN1BERField):

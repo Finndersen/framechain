@@ -1,34 +1,7 @@
-from etl_framework.operations.pandas.base import ColumnOperation
+import pandas as pd
+
+from etl_framework.operations.pandas.base import ColumnOperation, Operation
 from etl_framework.operations.transforms.string import RegexExtract
-
-
-class StringFunction(ColumnOperation):
-    """
-    Call arbitrary Series string function
-    """
-    def __init__(self, func_name, *args, **kwargs):
-        """
-
-        :param str func_name: Name of string function to call
-        :param args: Positional arguments to provide
-        :param kwargs: Keyword arguments to provide
-        """
-        super().__init__()
-        self.func_name = func_name
-        self.args = args
-        self.kwargs = kwargs
-
-    def action(self, string_column):
-        func = getattr(string_column.str, self.func_name)
-        return func(*self.args, **self.kwargs)
-
-    def description(self):
-        desc = 'String Series function: "{}"'.format(self.func_name)
-        if self.args:
-            desc += ' with args: {}'.format(self.args)
-        if self.kwargs:
-            desc += ' and kwargs: {}'.format(self.kwargs)
-        return desc
 
 
 class StringColumnSplit(ColumnOperation):
@@ -61,24 +34,26 @@ class StringColumnSplit(ColumnOperation):
                                                        'whitespace' if self.pat is None else self.pat)
 
 
-class Replace(ColumnOperation):
+class Replace(Operation):
     """Perform vectorised string replacement"""
 
-    def __init__(self, pattern, replace):
+    def __init__(self, pattern, replace, regex=False):
         """
 
         :param str or compiled regex pattern: Character sequence or regex pattern to replace
         :param str or callable replace: Replacement string or a callable. The callable is passed the regex match object
         and must return a replacement string to be used
+        :param bool regex: Bool value indicating whether specified pattern in regex
         """
         super().__init__()
         self.pattern = pattern
         self.replace = replace
+        self.regex = regex
 
-    def action(self, column):
-        return column.str.replace(pat=self.pattern,
-                                  repl=self.replace,
-                                  regex=not isinstance(self.pattern, str))
+    def action(self, df_or_series):
+        return df_or_series.replace(to_replace=self.pattern,
+                                    value=self.replace,
+                                    regex=self.regex)
 
     def description(self):
         return 'Replace "{}" with "{}"'.format(self.pattern, self.replace)

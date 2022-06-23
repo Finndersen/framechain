@@ -3,12 +3,17 @@ from etl_framework.operations import Operation
 
 class DataframeOperation(Operation):
     """
-    Abstract base class for a primary pandas ETL operation (highest level)
-    A configurable callable which takes DataFrame,  performs some kind of processing, and returns DataFrame
+    Base class for operations that expect a DataFrame as input
     """
+    ALL_COLUMNS = object()
+    NO_COLUMNS = object()
 
-    def action(self, dataframe):
-        raise NotImplementedError()
+    def get_required_columns(self):
+        """
+        Return list of DataFrame columns required for this operation
+        :return:
+        """
+        return self.ALL_COLUMNS
 
 
 class ColumnOperation(Operation):

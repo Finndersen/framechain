@@ -65,6 +65,10 @@ class ToNullableInteger(ColumnOperation):
         self.size = size
 
     def action(self, number_column):
+        # Convert to numeric if not already
+        if number_column.dtype == object:
+            number_column = pd.to_numeric(number_column, downcast='integer')
+
         try:
             return number_column.astype('Int{}'.format(self.size))
         except TypeError:

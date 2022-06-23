@@ -7,6 +7,7 @@ from pandas.api.types import is_categorical_dtype
 
 from . import Column
 from .base import DataframeOperation
+from etl_framework.operations import Operation
 
 log = logging.getLogger(__name__)
 
@@ -64,19 +65,23 @@ class DropColumns(DataframeOperation):
     def description(self):
         return 'Drop columns: {}'.format(self.columns)
 
+    def get_required_columns(self):
+        return self.columns
+
 
 class RenameColumns(DataframeOperation):
     """
-    Operation for renaming columns
+    Operation for renaming columns.
+    Rename mapping can be provided as either keyword arguments, or dictionary to 'mapping' argument
     """
 
-    def __init__(self, error_if_missing=True, **rename_mapping):
+    def __init__(self, mapping=None, error_if_missing=True, **rename_mapping):
         """
         :param bool error_if_missing: Whether to raise exception if field name in mapping does not exist
         :param str rename_mapping: mapping of old column names to new ones
         """
         super().__init__()
-        self.rename_mapping = rename_mapping
+        self.rename_mapping = mapping or rename_mapping
         self.error_if_missing = error_if_missing
 
     def action(self, dataframe):
@@ -143,6 +148,9 @@ class MultipleFillNA(DataframeOperation):
 
     def description(self):
         return 'Fill columns {} NA values with: "{}"'.format(self.columns, self.value)
+
+    def get_required_columns(self):
+        return self.columns
 
 
 class Explode(DataframeOperation):
@@ -220,7 +228,11 @@ class Combine(DataframeOperation):
                                                     fill_value=self.fill_value)
 
     def description(self):
-        return 'Combine "{}" and "{}" using: {}'.format(self.column1_name, self.column2_name, self.func)
+        return 'Combine "{}" and "{}" using: {}'.format(self.column1_name, self.column2_name,
+                                                        self.func)
+
+    def get_required_columns(self):
+        return [self.column1_name, self.column2_name]
 
 
 class CombineFirst(DataframeOperation):
@@ -279,6 +291,9 @@ class SelectColumns(DataframeOperation):
     def description(self):
         return "Select columns: {}".format(self.columns)
 
+    def get_required_columns(self):
+        return self.columns
+
 
 class AlignCategories(DataframeOperation):
     """
@@ -313,6 +328,9 @@ class AlignCategories(DataframeOperation):
 
         return dataframe
 
+    def get_required_columns(self):
+        return self.category_columns
+
 
 class CreateDuplicateRows(DataframeOperation):
     """Create a new data frame by joining original dataframe and part of original dataframe based on condition.
@@ -337,3 +355,79 @@ class CreateDuplicateRows(DataframeOperation):
     def description(self):
         desc = 'Mask input with condition ({})'.format(self.condition)
         return desc
+
+
+class Merge(Operation):
+    """
+    Merges two Dataframes, joining on values of specified column(s)
+    """
+
+    def __init__(self, on=None, left_on=None, right_on=None, join='inner', verify_dtypes=True,
+                 **merge_kwargs):
+        """
+        If neither on, left_on or right_on are provided, will join on columns common between dataframes
+        :param str/list on: column name(s) to join on both DataFrames (must exist in both)
+        :param str/list left_on: column name(s) to join on left DataFrame, or 'index' to use index
+        as join key
+        :param str/list right_on: column name(s) to join on right DataFrame, or 'index' to use
+        index as join key
+        :param str join: Type of join to merge dataframes--> {‘left’, ‘right’, ‘outer’, ‘inner’, ‘cross’}
+        :param bool verify_dtypes: Whether to verify that merge columns have the same dtype
+        :param dict merge_kwargs: Additional arguments to pass to pd.DataFrame.merge method
+        """
+        super().__init__()
+        # Validate config
+        if on:
+            if any([left_on, right_on]):
+                raise ValueError('Cannot provide "on" parameter as well as either "left_on" or "right_on"')
+            left_on = right_on = on
+
+        if any([left_on, right_on]):
+            if not all([left_on, right_on]):
+                raise ValueError('Must provide either both left_on and right_on parameters, or neither')
+        else:
+            raise ValueError('Must provide both "left_on" and "right_on"')
+
+        if isinstance(left_on, str) and left_on != 'index':
+            left_on = [left_on]
+
+        if isinstance(right_on, str) and right_on != 'index':
+            right_on = [right_on]
+
+        if left_on != 'index' and right_on != 'index' and len(left_on) != len(right_on):
+            raise ValueError('"left_on" and "right_on" must have same length')
+
+        self.join = join
+        self.left_on = left_on
+        self.right_on = right_on
+        self.verify_dtypes = verify_dtypes
+        self.merge_kwargs = merge_kwargs
+
+    def action(self, left_dataframe, right_dataframe):
+        """
+        Merge two dataframes
+        :param pd.DataFrame left_dataframe:
+        :param pd.DataFrame right_dataframe:
+        :return:
+        """
+        # Verify data types of join columns are the same
+        if self.verify_dtypes and self.left_on != 'index' and self.right_on != 'index':
+            for left_column, right_column in zip(self.left_on, self.right_on):
+                if left_dataframe[left_column].dtype != right_dataframe[right_column].dtype:
+                    raise TypeError('Dtypes of "{}"({}) and "{}"({}) are not equal'.format(left_column,
+                                                                                           left_dataframe[left_column].dtype,
+                                                                                           right_column,
+                                                                                           right_dataframe[right_column].dtype))
+        return left_dataframe.merge(right_dataframe,
+                                    how=self.join,
+                                    left_on=self.left_on if self.left_on != 'index' else None,
+                                    right_on=self.right_on if self.right_on != 'index' else None,
+                                    left_index=self.left_on == 'index',
+                                    right_index=self.right_on == 'index',
+                                    **self.merge_kwargs)
+
+    def description(self):
+        return 'Merges two dataframes via an {} join on the left dataframe {} and right ' \
+               'dataframe {}'.format(self.join,
+                                     'column(s): {}'.format(self.left_on) if self.left_on != 'index' else 'index',
+                                     'column(s): {}'.format(self.right_on) if self.right_on != 'index' else 'index')

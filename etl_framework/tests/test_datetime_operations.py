@@ -18,7 +18,7 @@ class DatetimeOperationsTests(TestCase):
 
         data = [
             (self.naive_datetime, SetTimezone('Australia/Brisbane'), datetime(2021, 1, 1, tzinfo=tzoffset('UTC+10:00:00', 60 * 60 * 10))),
-            (self.naive_datetime, SetTimezone(60 * 60 * 10), timezone('Australia/Brisbane').localize(datetime(2021, 1, 1))),
+            (self.naive_datetime, SetTimezone(60 * 10), timezone('Australia/Brisbane').localize(datetime(2021, 1, 1))),
             (self.naive_datetime, SetTimezone(timezone='utc'), datetime(2021, 1, 1, tzinfo=tzoffset('UTC+00:00:00', 0))),
             (self.timezone_aware_date, SetTimezone(None), datetime(2021, 1, 1, 0, 0, 0))  # Remove timezone
             ]

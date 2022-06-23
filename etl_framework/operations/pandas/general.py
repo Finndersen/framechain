@@ -4,11 +4,11 @@ import pandas as pd
 
 from etl_framework.operations import Operation
 from etl_framework.operations.general import MapValue
-from etl_framework.operations.pandas.base import ColumnOperation
+from etl_framework.operations.pandas.base import ColumnOperation, DataframeOperation
 from etl_framework.operations.pandas.exceptions import InvalidColumnError, OperationConfigurationError
 
 
-class Column(Operation):
+class Column(DataframeOperation):
     """
     Operation used to select a column of a Dataframe or a field value of a Row
     """
@@ -43,8 +43,11 @@ class Column(Operation):
     def description(self):
         return 'Column: "{}"'.format(self.column_name)
 
+    def get_required_columns(self):
+        return [self.column_name]
 
-class ColumnMap(MapValue, ColumnOperation):
+
+class MapColumnValues(MapValue, ColumnOperation):
     """
     Provide mapping dictionary which will be used to Convert column values
     Can specify logic for what happens when lookup values are missing (raise error, pass through key, use default)
@@ -89,13 +92,15 @@ class FillNA(Operation):
     Fill NA values of column or DF with specified value
     """
 
-    def __init__(self, value):
+    def __init__(self, value, **kwargs):
         """
 
         :param value: static value or callable which returns scalar value
+        :param kwarg: Keyword arguments to apply to fillna() method
         """
         super().__init__()
         self.value = value
+        self.kwargs = kwargs
 
     def action(self, df_or_series):
         """
@@ -103,7 +108,7 @@ class FillNA(Operation):
         :param df_or_series: Dataframe or Series
         :return:
         """
-        return df_or_series.fillna(self.value)
+        return df_or_series.fillna(self.value, **self.kwargs)
 
     def description(self):
         return 'Fill NA values with: {}'.format(self.value)
@@ -227,7 +232,7 @@ class Copy(Operation):
         return vector.copy(deep=self.deep)
 
 
-class PrintDF(Operation):
+class PrintDF(DataframeOperation):
     """
     Print contents of DataFrame and return input
     Useful for debugging
@@ -257,3 +262,6 @@ class PrintDF(Operation):
         pd.set_option('display.max_rows', self.rows)
         print(dataframe[columns])
         return dataframe
+
+    def get_required_columns(self):
+        return self.columns or self.ALL_COLUMNS
