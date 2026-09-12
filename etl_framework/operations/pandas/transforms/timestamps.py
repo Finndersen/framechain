@@ -36,7 +36,6 @@ class ColumnToDatetime(ColumnOperation):
         # Get Timestamp series from strings
         dt_series = pd.to_datetime(column,
                                    format=self.format,
-                                   infer_datetime_format=not self.format,
                                    **self.to_datetime_kwargs)
         return dt_series
 
@@ -201,10 +200,7 @@ class DatetimeToString(ColumnOperation):
         # If entire series is NaT, output series will be NaN float-type series
         # If series is mixture of NaT and value times, output will be object series with strings and NaN values
         if self.null_value is not None:
-            if int(pd.__version__[0]) < 1:
-                formatted_series = formatted_series.str.replace('NaT', self.null_value)
-            else:
-                formatted_series = formatted_series.fillna(self.null_value)
+            formatted_series = formatted_series.fillna(self.null_value)
 
         return formatted_series
 

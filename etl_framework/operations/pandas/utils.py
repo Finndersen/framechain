@@ -3,7 +3,7 @@ from operator import and_
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_object_dtype, is_string_dtype, is_categorical_dtype, is_datetime64_any_dtype, \
+from pandas.api.types import is_object_dtype, is_string_dtype, is_datetime64_any_dtype, \
     is_bool_dtype
 
 from etl_framework.operations.pandas.exceptions import MaskMismatchError, ChangedDataTypeError, DTypeError, \
@@ -40,7 +40,7 @@ def optimise_series(series):
     optimisations = []
 
     # Don't optimise if already category
-    if is_categorical_dtype(series):
+    if isinstance(series.dtype, pd.CategoricalDtype):
         return series, optimisations
 
     mem_usage = series.memory_usage(deep=True)
@@ -130,7 +130,7 @@ def concat_dataframes(dataframes, reset_index=True):
             # Check for dtype mismatches
             if not all(is_same_dtype(df[column_name], first_df_column) for df in dataframes[1:]):
                 # Align categories of categorical DTYPE
-                if is_categorical_dtype(first_df_column):
+                if isinstance(first_df_column.dtype, pd.CategoricalDtype):
                     all_categories = union_indexes(df[column_name].cat.categories for df in dataframes)
                     # Set new categories on column
                     for df in dataframes:
@@ -202,7 +202,7 @@ def integrate_masked_series(dest_series, new_series, mask):
                     'Removing any conditions may resolve the issue'.format(dest_series.dtype, new_series.dtype))
 
             # If merging with existing Category column, need to align categories if different
-            if is_categorical_dtype(dest_series):
+            if isinstance(dest_series.dtype, pd.CategoricalDtype):
                 new_series = new_series.astype('category')
                 all_categories = dest_series.cat.categories.union(new_series.cat.categories)
                 dest_series = dest_series.cat.set_categories(all_categories)

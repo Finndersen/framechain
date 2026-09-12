@@ -70,8 +70,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
                       for field in extract_fields if field.value_converter}
 
         # Detect whether bad lines (longer or shorter than expected) should be skipped
-        skip_bad_lines = (self.read_csv_kwargs.get('on_bad_lines', None) == 'skip'
-                          or not self.read_csv_kwargs.get('error_bad_lines', True))
+        skip_bad_lines = self.read_csv_kwargs.get('on_bad_lines', None) == 'skip'
 
         dataframe = pd.read_csv(file_data,
                                 sep=self.delimiter,
@@ -85,7 +84,7 @@ class DelimitedRecordExtractor(BaseDataFrameGenerator):
 
         if skip_bad_lines:
             # If skipping bad lines, need to select columns here because 'usecols' in read_csv()
-            # does not work with error_bad_lines=False or on_bad_lines='skip'
+            # does not work with on_bad_lines='skip'
             # https://github.com/pandas-dev/pandas/issues/40049
             dataframe = dataframe[[field.column_id for field in extract_fields]]
 

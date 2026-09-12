@@ -3,7 +3,6 @@ Primary Pandas operations which take Dataframe and return Dataframe
 """
 import logging
 import pandas as pd
-from pandas.api.types import is_categorical_dtype
 
 from . import Column
 from .base import DataframeOperation
@@ -316,7 +315,7 @@ class AlignCategories(DataframeOperation):
         # Validate column type and build aggregate category list
         for column_name in self.category_columns:
             column = dataframe[column_name]
-            if not is_categorical_dtype(column):
+            if not isinstance(column.dtype, pd.CategoricalDtype):
                 raise TypeError('"{}" is not a categorical type column ({})'.format(column_name,
                                                                                     column.dtype))
 
