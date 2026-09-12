@@ -47,8 +47,6 @@ pipeline('data/yellow_tripdata_2021-01.csv')
 
 *(imports omitted for brevity — [Quickstart](#quickstart) below builds this same pipeline up in full, one component at a time, with imports, profiling, and visualization)*
 
-A raw Python value or plain function dropped into a pipeline is auto-wrapped as a `Value` or `Lambda` operation by `convert_to_operation()`, so scalars and callables compose transparently alongside `Operation` instances. And because every node is a plain, introspectable Python object, the library gets execution profiling and Graphviz visualization for free — see [Quickstart](#quickstart) and [Core concepts](#core-concepts) below.
-
 ## Installation
 
 Not published to PyPI. Install from a clone in editable mode:
@@ -169,6 +167,8 @@ full_pipeline.show_graph()  # renders the pipeline structure as a Graphviz diagr
 ## Core concepts
 
 **Operator-based chaining.** `>>` is the pipeline backbone: `a >> b >> c` builds a single `ChainedOperations` (flattening automatically, so chaining a chain doesn't nest), which calls each stage in order, passing output to input. Any pipeline is itself just an `Operation`, so it can be embedded inside a larger one.
+
+**Auto-wrapping.** A raw Python value or plain function dropped into a pipeline expression is auto-wrapped as a `Value` or `Lambda` operation by `convert_to_operation()`, so scalars and callables compose transparently alongside `Operation` instances.
 
 **`Column` / `SetColumn`.** `Column('x')` extracts column `'x'` from whatever DataFrame or Series it's called with, and participates in arithmetic/comparisons like any other operation. `SetColumn('y', <transform>)` runs `<transform>` against the input and assigns the result onto column `'y'`, returning a new (shallow-copied) DataFrame.
 
