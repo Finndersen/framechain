@@ -1,2 +1,13 @@
 .idea/
 venv
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.ipynb_checkpoints/
+etl_framework/operations/pandas/record_extractors/asn1_ber/*.c
+etl_framework/operations/pandas/record_extractors/asn1_ber/*.html
+etl_framework/operations/pandas/record_extractors/asn1_ber/*.so
+etl_framework/operations/pandas/record_extractors/asn1_ber/*.pyd

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "etl-framework"
+version = "0.1.0"
+description = "A composable, operator-overloaded pandas ETL and data-pipeline construction library."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Finn Andersen" },
+]
+requires-python = ">=3.8"
+dependencies = [
+    "pandas>=1.3,<3",
+    "numpy",
+    "pytz",
+    "python-dateutil",
+]
+
+[project.optional-dependencies]
+crypto = ["pycryptodome"]
+viz = ["pydot", "snakeviz"]
+hdfs = ["hdfs"]
+cython-experiments = ["Cython"]
+numba-experiments = ["numba"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["etl_framework*"]
