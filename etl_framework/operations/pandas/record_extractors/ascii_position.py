@@ -14,7 +14,7 @@ class ASCIIPartitionedRecordExtractor(BaseDataFrameGenerator):
     """
     def __init__(self, fields, header_lines=0, record_skip_check=None):
         """
-        :param fields: Tuple of ParitionedField
+        :param fields: Tuple of PartitionedField
         :param header_lines: Number of header lines to skip
         :param record_skip_check: Optional function which takes raw string content of record line and returns boolean whether it should be skipped or not
         """
@@ -47,7 +47,7 @@ class ASCIIPartitionedRecordExtractor(BaseDataFrameGenerator):
         return pd.DataFrame(all_records, columns=(field.name for field in self.fields))
 
 
-class ParitionedField(InputField):
+class PartitionedField(InputField):
     """
     Object to define details of partitioned field, such as start and end position in record line
     """

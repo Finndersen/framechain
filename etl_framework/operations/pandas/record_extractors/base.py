@@ -101,30 +101,6 @@ class BaseDataFrameGenerator(Operation):
         """
         return dataframe[[field.name for field in self.fields if field.post_process]]
 
-    # def get_execute_time(self):
-    #     """
-    #     Get execute time of just this operation (not including any wrapped sub-operations)
-    #     Need to get execution time of fields because do not have visibility of value conversion execute time
-    #     Assumes Field instances are not re-used elsewhere...
-    #     :return:
-    #     """
-    #     exec_time = self.get_cumulative_time()
-    #     for op in self.child_operations:
-    #         exec_time -= op.get_cumulative_time()
-    #     return exec_time
-
-    # def get_child_operation_stats(self, child_operation):
-    #     """
-    #     BaseDataFrameGenerator does not have visibility of Field.convert_value execution time
-    #     Assume this is the only caller of the field instance and return full execution stats
-    #     :param child_operation:
-    #     :return:
-    #     """
-    #     if isinstance(child_operation, InputField):
-    #         return child_operation.get_execution_stats()
-    #     else:
-    #         return super().get_child_operation_stats(child_operation)
-
 
 class IterableRecordsDataframeGenerator(BaseDataFrameGenerator):
     """
@@ -277,12 +253,6 @@ class InputField(BaseOperation):
         # Perform vectorised value conversion
         if self.column_converter:
             column = self.column_converter(column)
-
-        # if self.dtype:
-        #     column = column.astype(self.dtype, copy=False)
-        #
-        # if self.categorical:
-        #     column = column.astype('category', copy=False)
 
         return column
 

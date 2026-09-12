@@ -92,7 +92,11 @@ def decode_node(asn_data, start_pos, parent_id, parent_depth):
 
 
 class ASN1BEREncoderNumba(ASN1BERDecoder):
-    
+    """
+    Experimental, opt-in, drop-in replacement for ASN1BERDecoder using a Numba-jitted decode_node for better
+    performance; not used by the default/production code path
+    """
+
     def decode_node(self, parent_node=None, start_pos=None):
         if parent_node:
             return ASN1Node(*decode_node(self.asn_data,

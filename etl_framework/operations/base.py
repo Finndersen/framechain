@@ -708,10 +708,8 @@ class ChainedOperations(Operation):
         return value
 
     def add_to_graph(self, graph):
-        from pydot import Edge, Cluster
-        # Create Subgraph/cluster to contain operation chain
-        # subgraph = Cluster(graph_name=randomstring(10), label=self.short_description())
-        # Create sequence of child operation nodes in subgraph
+        from pydot import Edge
+        # Create sequence of child operation nodes
         first_tail, prev_head = self.child_operations[0].add_to_graph(graph)
         for operation in self.child_operations[1:]:
             # Create new node for operation and edge to previous node
@@ -719,7 +717,6 @@ class ChainedOperations(Operation):
             graph.add_edge(Edge(prev_head, tail))
             prev_head = head
 
-        # graph.add_subgraph(subgraph)
         return first_tail, prev_head
 
     def short_description(self):
@@ -848,8 +845,6 @@ def add_profile_stats(container, pstat_id, new_stats, primary=True):
         existing_stats = container[pstat_id]
         merged_stats = tuple(existing_stats[i] + new_stats[i] for i in range(4))
         container[pstat_id] = merged_stats + (existing_stats[4],) if primary else merged_stats
-        # for i in range(4):
-        #     existing_stats[i] += new_stats[i]
     else:
         # Make copy of new stats list so original isnt mutated later
         container[pstat_id] = new_stats + ({},) if primary else new_stats

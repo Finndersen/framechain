@@ -5,6 +5,7 @@ from etl_framework.operations.pandas.record_extractors.asn1_ber.asn1_decoder_ext
 class ASN1CythonDecoder(ASN1BERDecoder):
     """
     ASN1 decoder class which uses cython function to decode tag details for better performance
+    Experimental, opt-in, drop-in replacement for ASN1BERDecoder; not used by the default/production code path
     """
 
     def decode_node(self, parent_node, start_pos=None):

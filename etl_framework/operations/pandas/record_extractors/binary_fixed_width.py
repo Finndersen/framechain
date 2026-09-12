@@ -49,16 +49,6 @@ class BinaryFixedWidthRecordExtractor(IterableRecordsDataframeGenerator):
 
             yield record_dict
 
-    # def order_fields(self, dataframe):
-    #     # Create ordered list of columns
-    #     # Record type and number + defined fields
-    #     expected_columns = ([self.RECORDTYPE_FIELD_NAME, self.RECORDNUMBER_FIELD_NAME] +
-    #                         [field.name for field in self.fields if field.name in dataframe.columns])
-    #     # Any other fields added (perhaps by record processor)
-    #     extra_colums = [column for column in dataframe.columns if column not in expected_columns]
-    #     dataframe = dataframe[expected_columns + extra_colums]
-    #     return dataframe
-
 
 class BFWField(InputField):
     """

@@ -1,7 +1,5 @@
 import csv
 
-import pandas as pd
-
 from etl_framework.operations.pandas.record_extractors.base import InputField, BaseDataFrameGenerator, \
     TimestampFieldMixin, IntegerFieldMixin, IterableRecordsDataframeGenerator
 from etl_framework.operations import profiled
@@ -28,16 +26,6 @@ class AdvancedDelimitedRecordExtractor(IterableRecordsDataframeGenerator):
         super().__init__(fields, **kwargs)
         self.recordtype_detector = self.add_child_operation(recordtype_detector, none_allowed=True)
         self.csv_reader_kwargs = csv_reader_kwargs or {}
-
-    # def create_dataframe(self, records):
-    #     """
-    #
-    #     :param records: extracted records (iterable of lists)
-    #     :return:
-    #     """
-    #     return pd.DataFrame(data=records,
-    #                         columns=[field.name for field in self.fields],
-    #                         dtype='object')
 
     def get_records(self, file_reader):
         """
