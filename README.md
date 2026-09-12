@@ -1,4 +1,4 @@
-# etl_framework
+# framechain
 
 A composable, operator-overloaded pandas ETL and data-pipeline construction library — you build pipelines by writing expressions like `Column('fare') * 1.1`, not by wiring up tasks in a DAG.
 
@@ -10,7 +10,7 @@ This library was built ~2021–2022 while working on a telco data platform, as a
 
 Most Python ETL/pipeline tools fall into one of two camps: an orchestrator that schedules a DAG of opaque tasks (Airflow, Prefect, Dagster), or a thin wrapper around "just write a function." This library takes a different approach entirely: **a pipeline is a single composed object built entirely from operator overloading, with no executor or scheduler underneath it.**
 
-The base class, `Operation` (`etl_framework/operations/base.py`), overloads:
+The base class, `Operation` (`framechain/operations/base.py`), overloads:
 
 - `>>` — chain operations sequentially (output of the left becomes input of the right), auto-flattening nested chains into one `ChainedOperations`
 - `&`, `|`, `~` — boolean-style combination and inversion
@@ -36,7 +36,7 @@ Not published to PyPI. Install from a clone in editable mode:
 
 ```bash
 git clone <repo-url>
-cd etl_framework
+cd framechain
 pip install -e ".[dev]"
 ```
 
@@ -46,7 +46,7 @@ Optional extras (from `pyproject.toml`), combine as needed, e.g. `pip install -e
 |---|---|---|
 | `dev` | `pytest` | Running the test suite |
 | `viz` | `pydot`, `snakeviz` | `show_graph()` pipeline visualization and `profile_snakeviz()` profiling UI |
-| `crypto` | `pycryptodome` | AES encrypt/decrypt operations (`etl_framework/operations/cryptography.py`) |
+| `crypto` | `pycryptodome` | AES encrypt/decrypt operations (`framechain/operations/cryptography.py`) |
 | `hdfs` | `hdfs` | `HDFSFileSystemWriter` |
 | `cython-experiments` | `Cython` | The experimental Cython-accelerated ASN.1 BER decoder |
 | `numba-experiments` | `numba` | The experimental Numba-accelerated ASN.1 BER decoder |
@@ -60,8 +60,8 @@ This walks through the pipeline built in `Demo.ipynb` over the public [NYC TLC Y
 **Extract** a typed DataFrame directly from the CSV — each `Field` declares its own dtype/parsing, so there's no separate `read_csv()` + coercion step:
 
 ```python
-from etl_framework.operations.io import LocalFileReader
-from etl_framework.operations.pandas.record_extractors.delimited import (
+from framechain.operations.io import LocalFileReader
+from framechain.operations.pandas.record_extractors.delimited import (
     DelimitedRecordExtractor, NumberField, TimestampField, IntegerField, StringField,
 )
 
@@ -88,7 +88,7 @@ df = read_extract_records('data/yellow_tripdata_2021-01.csv')
 **Transform** — drop bad rows, derive a duration column, apply a conditional 10% card-payment surcharge, and compute a derived rate, all as composed `Operation`s:
 
 ```python
-from etl_framework.operations.pandas import DropRows, Column, IsNull, TimedeltaToSeconds, SetColumn, DFWhere
+from framechain.operations.pandas import DropRows, Column, IsNull, TimedeltaToSeconds, SetColumn, DFWhere
 
 remove_bad_data = DropRows((Column('vendor_id') >> IsNull()) | (Column('passenger_count') == 0))
 
@@ -125,7 +125,7 @@ full_pipeline.profile_snakeviz('data/yellow_tripdata_2021-01.csv')  # opens a Sn
 
 **`Column` / `SetColumn`.** `Column('x')` is an `Operation` that extracts column `'x'` from whatever DataFrame or Series it's called with; it participates in arithmetic and comparisons like any other operation. `SetColumn('y', <transform>)` runs `<transform>` against the input DataFrame and assigns the resulting Series onto (new or existing) column `'y'`, returning a new DataFrame with a shallow copy semantics.
 
-**`DFWhere` / `SeriesWhere` and `get_required_columns()`.** These conditionally apply a wrapped operation to only the rows matching a boolean mask, then integrate the result back into the original data. `DFWhere` (the DataFrame version) is genuinely optimized, not just a convenience wrapper: `DataframeOperation` subclasses (`Column`, `SetColumn`, `DropColumns`, `Merge`, etc., in `etl_framework/operations/pandas/base.py`) each implement `get_required_columns()`, and `DFWhere` walks the operation tree it wraps (via `Operation.search()`) to automatically infer exactly which columns the wrapped transform needs and which it changes. It then slices the DataFrame down to only those columns before masking and copying, instead of copying the whole frame — a meaningful performance/memory win on wide DataFrames, derived directly from the pipeline's own structure rather than hand-tuned. `DFWhere` explicitly refuses to wrap `DropRows`, `DropColumns`, `RenameColumns`, or `Explode` (raising `InvalidOperationError`), since row/column-dropping operations inside it would break the masking/reintegration strategy.
+**`DFWhere` / `SeriesWhere` and `get_required_columns()`.** These conditionally apply a wrapped operation to only the rows matching a boolean mask, then integrate the result back into the original data. `DFWhere` (the DataFrame version) is genuinely optimized, not just a convenience wrapper: `DataframeOperation` subclasses (`Column`, `SetColumn`, `DropColumns`, `Merge`, etc., in `framechain/operations/pandas/base.py`) each implement `get_required_columns()`, and `DFWhere` walks the operation tree it wraps (via `Operation.search()`) to automatically infer exactly which columns the wrapped transform needs and which it changes. It then slices the DataFrame down to only those columns before masking and copying, instead of copying the whole frame — a meaningful performance/memory win on wide DataFrames, derived directly from the pipeline's own structure rather than hand-tuned. `DFWhere` explicitly refuses to wrap `DropRows`, `DropColumns`, `RenameColumns`, or `Explode` (raising `InvalidOperationError`), since row/column-dropping operations inside it would break the masking/reintegration strategy.
 
 **Extractor → transforms → writer.** The idiomatic shape of a full pipeline is `Extractor >> transform_operations >> Writer`. Extractors turn raw bytes/text into a typed `DataFrame`; transforms are ordinary composed `Operation`s; writers/exporters send the result somewhere.
 
@@ -135,7 +135,7 @@ full_pipeline.profile_snakeviz('data/yellow_tripdata_2021-01.csv')  # opens a Sn
 
 Grouped by module, not exhaustive — see docstrings in source for full parameter details.
 
-**Core / generic** (`etl_framework/operations/{general,control,logical,conditional,wrappers}.py`)
+**Core / generic** (`framechain/operations/{general,control,logical,conditional,wrappers}.py`)
 
 | Operation | Purpose |
 |---|---|
@@ -151,7 +151,7 @@ Grouped by module, not exhaustive — see docstrings in source for full paramete
 | `StringContains`, `StringIsNumeric`, `IsInstance` | Scalar string/type checks |
 | `Cached`, `MapArguments` | Memoize a scalar transform; build multi-arg calls from one input |
 
-**Pandas column/value operations** (`etl_framework/operations/pandas/{general,conditional}.py`)
+**Pandas column/value operations** (`framechain/operations/pandas/{general,conditional}.py`)
 
 | Operation | Purpose |
 |---|---|
@@ -162,7 +162,7 @@ Grouped by module, not exhaustive — see docstrings in source for full paramete
 | `IsIn`, `IsNull`, `IsEmpty`, `StringContains`, `StartsWith`, `IsNumeric`, `FieldExists` | Boolean-mask-producing column conditions |
 | `MergeRowValues` | Combine several row fields with a custom merge/filter function |
 
-**DataFrame-level operations** (`etl_framework/operations/pandas/dataframe.py`)
+**DataFrame-level operations** (`framechain/operations/pandas/dataframe.py`)
 
 | Operation | Purpose |
 |---|---|
@@ -173,7 +173,7 @@ Grouped by module, not exhaustive — see docstrings in source for full paramete
 | `Merge` | Join two DataFrames — validates that join-column dtypes actually match before merging, raising a clear `TypeError` instead of a confusing downstream failure |
 | `CreateDuplicateRows` | Duplicate rows matching a condition |
 
-**Pipeline-construction operations** (`etl_framework/operations/pandas/constructors.py`)
+**Pipeline-construction operations** (`framechain/operations/pandas/constructors.py`)
 
 | Operation | Purpose |
 |---|---|
@@ -184,7 +184,7 @@ Grouped by module, not exhaustive — see docstrings in source for full paramete
 | `SeriesWhere`, `DFWhere` | Conditionally apply a sub-pipeline to masked rows (see Core concepts) |
 | `ConstructDataFrame`, `ConstructSeries` | Build a DataFrame/Series from arbitrary input data |
 
-**Dtype / datetime transforms** (`etl_framework/operations/pandas/transforms/{conversions,numeric,timestamps}.py`)
+**Dtype / datetime transforms** (`framechain/operations/pandas/transforms/{conversions,numeric,timestamps}.py`)
 
 | Operation | Purpose |
 |---|---|
@@ -194,7 +194,7 @@ Grouped by module, not exhaustive — see docstrings in source for full paramete
 | `SetColumnTimezone`, `ConvertTimezone` | Localize/convert timezone on a datetime column |
 | `DateTimeProperty`, `DatetimeToString`, `TimedeltaToSeconds` | Extract a datetime attribute; format/convert timedelta |
 
-**String transforms** (`etl_framework/operations/pandas/transforms/string.py`)
+**String transforms** (`framechain/operations/pandas/transforms/string.py`)
 
 | Operation | Purpose |
 |---|---|
@@ -203,7 +203,7 @@ Grouped by module, not exhaustive — see docstrings in source for full paramete
 | `ColumnRegexExtract`, `ColumnRegexFindall` | Regex extraction against a column |
 | `BytesColumnToString` | Decode a bytes column to string |
 
-**Validation** (`etl_framework/operations/pandas/validation.py`)
+**Validation** (`framechain/operations/pandas/validation.py`)
 
 | Operation | Purpose |
 |---|---|
@@ -211,14 +211,14 @@ Grouped by module, not exhaustive — see docstrings in source for full paramete
 
 ## Extractors & writers
 
-Extractors (`etl_framework/operations/pandas/record_extractors/`) turn raw input into a typed pandas DataFrame, driven by a per-field schema (each field declares its own name, source position/key, and dtype/converter):
+Extractors (`framechain/operations/pandas/record_extractors/`) turn raw input into a typed pandas DataFrame, driven by a per-field schema (each field declares its own name, source position/key, and dtype/converter):
 
 - **`DelimitedRecordExtractor`** — the most commonly used extractor; wraps `pandas.read_csv` with per-field dtype injection via typed `Field` classes (`IntegerField`, `NumberField`, `TimestampField`, `StringField`, ...), as used in the quickstart above.
 - **`BinaryFixedWidthRecordExtractor`** ("BFW") — byte-offset/length field records, used originally for legacy telecom switch output formats.
-- **`ASN1BERRecordExtractor`** — a hand-written ASN.1 BER decoder for telecom CDR/billing-record formats, selecting fields by ASN.1 tag path. This is the most involved piece of the codebase's telecom heritage, and worth a look in `etl_framework/operations/pandas/record_extractors/asn1_ber/` if you're interested in binary protocol decoding. It also ships **experimental Cython- and Numba-accelerated decoder variants** (`asn1_decoder_cython.py`, `asn1_decoder_numba.py`, behind the `cython-experiments`/`numba-experiments` extras) as drop-in replacements for the pure-Python decoder — kept in the repo as a deliberate performance-engineering exploration rather than the default code path.
+- **`ASN1BERRecordExtractor`** — a hand-written ASN.1 BER decoder for telecom CDR/billing-record formats, selecting fields by ASN.1 tag path. This is the most involved piece of the codebase's telecom heritage, and worth a look in `framechain/operations/pandas/record_extractors/asn1_ber/` if you're interested in binary protocol decoding. It also ships **experimental Cython- and Numba-accelerated decoder variants** (`asn1_decoder_cython.py`, `asn1_decoder_numba.py`, behind the `cython-experiments`/`numba-experiments` extras) as drop-in replacements for the pure-Python decoder — kept in the repo as a deliberate performance-engineering exploration rather than the default code path.
 - **`RegexRecordExtractor`** and **`ASCIIPartitionedRecordExtractor`** — regex- and fixed-position-based extractors, marked as experimental/unfinished in their own docstrings.
 
-Writers/exporters (`etl_framework/operations/io/writers.py`, `etl_framework/operations/pandas/output_generators/`) send a pipeline's output somewhere:
+Writers/exporters (`framechain/operations/io/writers.py`, `framechain/operations/pandas/output_generators/`) send a pipeline's output somewhere:
 
 - **`LocalFileWriter`** — writes to the local filesystem atomically (writes to a `.tmp` path, then `os.rename`s into place), with optional gzip compression inferred from the output filename.
 - **`HDFSFileSystemWriter`** — writes to HDFS (requires the `hdfs` extra).
@@ -227,23 +227,23 @@ Writers/exporters (`etl_framework/operations/io/writers.py`, `etl_framework/oper
 
 ## Notes / gotchas
 
-- **`pd.set_option('mode.chained_assignment', 'raise')` is set at import time.** Importing `etl_framework.operations.pandas.constructors` (which happens transitively via `etl_framework.operations.pandas`) sets this pandas option globally for the process, so any ambiguous chained-assignment elsewhere in your code will raise a `SettingWithCopyError` instead of the default warning. This is a deliberate defensive choice — the library relies on precise DataFrame copy semantics internally and would rather fail loudly than risk a silent incorrect write — but it *is* a global side effect of importing the package, worth knowing about if you use pandas elsewhere in the same process.
+- **`pd.set_option('mode.chained_assignment', 'raise')` is set at import time.** Importing `framechain.operations.pandas.constructors` (which happens transitively via `framechain.operations.pandas`) sets this pandas option globally for the process, so any ambiguous chained-assignment elsewhere in your code will raise a `SettingWithCopyError` instead of the default warning. This is a deliberate defensive choice — the library relies on precise DataFrame copy semantics internally and would rather fail loudly than risk a silent incorrect write — but it *is* a global side effect of importing the package, worth knowing about if you use pandas elsewhere in the same process.
 - **`AsType(to_type=str)` raises by default.** Pass `allow_str=True` if you really want `.astype(str)`; otherwise you'll get an `OperationConfigurationError` explaining why (it silently turns `NaN` into the string `"nan"`).
 - **`DFWhere` will raise `InvalidOperationError`** if you nest `DropRows`, `DropColumns`, `RenameColumns`, or `Explode` inside it — these operations change row/column structure in ways that break its masking strategy.
 - **Errors raised deep in a pipeline are wrapped in `OperationError`**, which records the full nested-operation call stack (innermost first) so you can see exactly which operation, at which point in a long chain, failed — rather than a bare traceback into `pandas` internals.
 
 ## Testing
 
-The test suite is standard-library `unittest`, under `etl_framework/tests/`. Run it with either:
+The test suite is standard-library `unittest`, under `framechain/tests/`. Run it with either:
 
 ```bash
-python -m unittest discover -s etl_framework/tests
+python -m unittest discover -s framechain/tests
 ```
 
 or, with the `dev` extra installed (`pip install -e ".[dev]"`), pytest can run the same tests:
 
 ```bash
-pytest etl_framework/tests
+pytest framechain/tests
 ```
 
 ## License

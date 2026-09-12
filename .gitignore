@@ -8,8 +8,8 @@ __pycache__/
 build/
 dist/
 .ipynb_checkpoints/
-etl_framework/operations/pandas/record_extractors/asn1_ber/*.c
-etl_framework/operations/pandas/record_extractors/asn1_ber/*.html
-etl_framework/operations/pandas/record_extractors/asn1_ber/*.so
-etl_framework/operations/pandas/record_extractors/asn1_ber/*.pyd
+framechain/operations/pandas/record_extractors/asn1_ber/*.c
+framechain/operations/pandas/record_extractors/asn1_ber/*.html
+framechain/operations/pandas/record_extractors/asn1_ber/*.so
+framechain/operations/pandas/record_extractors/asn1_ber/*.pyd
 /data/
