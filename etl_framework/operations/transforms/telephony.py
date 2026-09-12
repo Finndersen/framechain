@@ -149,7 +149,7 @@ class ConvertCellID(Operation):
 class IPAddressFromHexString(Operation):
     """
     Convert 8-character hex string to IPv4 address
-    E.g. 24513d3a -> 36.81.61.58
+    E.g. c000020a -> 192.0.2.10
     """
     def action(self, hex_str):
         return '.'.join(str(int(hex_str[2*i:2*i+2], 16)) for i in range(4))
