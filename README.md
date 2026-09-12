@@ -1,14 +1,21 @@
 # framechain
 
-A library for declaratively building data-transformation pipelines on top of pandas. Pipelines are assembled from small, configurable `Operation` classes with simple interfaces — declare what each step should do, and the library handles doing it correctly and efficiently in pandas underneath: dtype coercion, copy semantics, conditional/masked application, column-scoped operations, and the other easy-to-get-wrong parts of the pandas API.
+A library for declaratively building data-transformation pipelines on top of pandas. Pipelines are assembled from small, configurable `Operation` classes with simple interfaces — the library handles the fiddly pandas mechanics underneath (dtype coercion, copy semantics, conditional/column-scoped application), so pipeline code stays about *what* happens, not how to do it safely and efficiently in pandas.
 
+> [!NOTE]
 > Personal project, built while working at a telco data platform (~2021–2022). Not published to PyPI, not actively maintained — published here as a portfolio piece, not a supported package.
 
-A pipeline is built from three kinds of component, each just an `Operation`: **extractors** parse raw input (CSV, fixed-width binary records, ASN.1-encoded records, …) into a pandas DataFrame; **operations** filter, join, and transform that data — including applying a transform to only specific columns or only rows matching a condition, without copying the whole DataFrame to do it; and **writers** send the result somewhere. Chaining all three together with `>>` produces one runnable pipeline object, which also gets execution profiling and Graphviz-based visualization for free.
+A pipeline is built from three kinds of component, each just an `Operation`:
 
-## Philosophy
+- **Extractors** parse raw input (CSV, fixed-width binary records, ASN.1-encoded records, …) into a pandas DataFrame
+- **Operations** filter, join, and transform the data — including scoping a transform to specific columns or to rows matching a condition, without copying the whole DataFrame
+- **Writers** send the result somewhere
 
-This library is built entirely on Python's operator overloading: a pipeline is a single composed `Operation` object. The base class, `Operation` (`framechain/operations/base.py`), overloads:
+Chaining these together with `>>` produces one runnable pipeline object, with execution profiling and Graphviz visualization built in.
+
+## How it works
+
+A pipeline is a single composed `Operation` object, built entirely from Python's operator overloading — no separate execution engine. The base class, `Operation` (`framechain/operations/base.py`), overloads:
 
 - `>>` — chain operations sequentially (output of the left becomes input of the right), auto-flattening nested chains into one `ChainedOperations`
 - `&`, `|`, `~` — boolean-style combination and inversion
@@ -16,38 +23,31 @@ This library is built entirely on Python's operator overloading: a pipeline is a
 - `> < == != >= <=` — comparisons, producing boolean masks
 - `[]` — slicing (including vectorised string slicing on a `pd.Series`)
 
-The result is that pipeline code reads like the pandas expression it represents:
-
-```python
-Column('vendor_id') > 0
-(Column('a') > 0) & (Column('b') < 10)
-(Column('dropoff_timestamp') - Column('pickup_timestamp')) >> TimedeltaToSeconds()
-```
-
-Composed into a full pipeline, that same style looks like this — an extractor parses a CSV into a DataFrame, a couple of transforms clean it up and derive a new column, and a writer exports the result, all chained with `>>` into one callable:
+So pipeline code reads like the pandas expression it represents, while staying **lazy, composable and introspectable** — nothing runs until the pipeline is called with an input. For example, an extractor parses a CSV into a DataFrame, a couple of operations clean it up and derive a new column, and a writer exports the result — all chained with `>>` into one callable:
 
 ```python
 record_extractor = DelimitedRecordExtractor(fields=[
-    IntegerField('vendor_id', column_id='VendorID', size=8),
+    IntegerField('vendor_id', column_id='VendorID', size=8),          # cast the VendorID column to a nullable int
     TimestampField('pickup_timestamp', column_id='tpep_pickup_datetime'),
     TimestampField('dropoff_timestamp', column_id='tpep_dropoff_datetime'),
 ])
 
 pipeline = (
-    LocalFileReader() >> record_extractor
-    >> DropRows(Column('vendor_id') >> IsNull())
-    >> SetColumn('trip_duration', (Column('dropoff_timestamp') - Column('pickup_timestamp')) >> TimedeltaToSeconds())
-    >> DataFrameToCSVExporter() >> LocalFileWriter('output/trips.csv')
+    LocalFileReader() >> record_extractor                              # read the file, parse into a typed DataFrame
+    >> DropRows(Column('vendor_id') >> IsNull())                       # drop rows with a missing vendor_id
+    >> SetColumn(                                                      # add a trip_duration column, computed as:
+        'trip_duration',
+        (Column('dropoff_timestamp') - Column('pickup_timestamp')) >> TimedeltaToSeconds(),  # dropoff - pickup, in seconds
+    )
+    >> DataFrameToCSVExporter() >> LocalFileWriter('output/trips.csv')  # export to CSV and write to disk
 )
 
 pipeline('data/yellow_tripdata_2021-01.csv')
 ```
 
-(imports omitted for brevity — the [Quickstart](#quickstart) below builds this same pipeline up in full, one component at a time, with imports, profiling, and visualization)
+*(imports omitted for brevity — [Quickstart](#quickstart) below builds this same pipeline up in full, one component at a time, with imports, profiling, and visualization)*
 
-...while remaining **lazy, composable and introspectable** rather than eagerly evaluated. Every operator call just builds a small tree of `Operation` objects; nothing runs until the resulting object is called with an input. A raw Python value or plain function dropped into that expression is auto-wrapped as a `Value` or `Lambda` operation by `convert_to_operation()`, so scalars and callables compose transparently alongside `Operation` instances.
-
-Because every node in a pipeline is a plain, introspectable Python object, the library gets several capabilities essentially for free — most notably built-in profiling and visualization (see [Quickstart](#quickstart) and [Core concepts](#core-concepts) below) that apply uniformly to *any* pipeline, however it's composed, without additional instrumentation.
+A raw Python value or plain function dropped into a pipeline is auto-wrapped as a `Value` or `Lambda` operation by `convert_to_operation()`, so scalars and callables compose transparently alongside `Operation` instances. And because every node is a plain, introspectable Python object, the library gets execution profiling and Graphviz visualization for free — see [Quickstart](#quickstart) and [Core concepts](#core-concepts) below.
 
 ## Installation
 
@@ -108,7 +108,7 @@ df = read_extract_records('data/yellow_tripdata_2021-01.csv')
 
 ### Operations
 
-Operations filter, clean, and transform the DataFrame — composed the same way as any other `Operation`, using the overloaded operators from [Philosophy](#philosophy) above. This drops invalid rows, derives a trip-duration column, applies a 10% surcharge only to card payments without touching any other rows, and computes a derived rate:
+Operations filter, clean, and transform the DataFrame, composed with the overloaded operators from [How it works](#how-it-works) above. This drops invalid rows, derives a trip-duration column, applies a 10% surcharge only to card payments, and computes a derived rate:
 
 ```python
 from framechain.operations.pandas import DropRows, Column, IsNull, TimedeltaToSeconds, SetColumn, DFWhere
@@ -170,13 +170,13 @@ full_pipeline.show_graph()  # renders the pipeline structure as a Graphviz diagr
 
 **Operator-based chaining.** `>>` is the pipeline backbone: `a >> b >> c` builds a single `ChainedOperations` (flattening automatically, so chaining a chain doesn't nest), which calls each stage in order, passing output to input. Any pipeline is itself just an `Operation`, so it can be embedded inside a larger one.
 
-**`Column` / `SetColumn`.** `Column('x')` is an `Operation` that extracts column `'x'` from whatever DataFrame or Series it's called with; it participates in arithmetic and comparisons like any other operation. `SetColumn('y', <transform>)` runs `<transform>` against the input DataFrame and assigns the resulting Series onto (new or existing) column `'y'`, returning a new DataFrame with a shallow copy semantics.
+**`Column` / `SetColumn`.** `Column('x')` extracts column `'x'` from whatever DataFrame or Series it's called with, and participates in arithmetic/comparisons like any other operation. `SetColumn('y', <transform>)` runs `<transform>` against the input and assigns the result onto column `'y'`, returning a new (shallow-copied) DataFrame.
 
-**`DFWhere` / `SeriesWhere` and `get_required_columns()`.** These conditionally apply a wrapped operation to only the rows matching a boolean mask, then integrate the result back into the original data. `DFWhere` (the DataFrame version) is genuinely optimized, not just a convenience wrapper: `DataframeOperation` subclasses (`Column`, `SetColumn`, `DropColumns`, `Merge`, etc., in `framechain/operations/pandas/base.py`) each implement `get_required_columns()`, and `DFWhere` walks the operation tree it wraps (via `Operation.search()`) to automatically infer exactly which columns the wrapped transform needs and which it changes. It then slices the DataFrame down to only those columns before masking and copying, instead of copying the whole frame — a meaningful performance/memory win on wide DataFrames, derived directly from the pipeline's own structure rather than hand-tuned. `DFWhere` explicitly refuses to wrap `DropRows`, `DropColumns`, `RenameColumns`, or `Explode` (raising `InvalidOperationError`), since row/column-dropping operations inside it would break the masking/reintegration strategy.
+**`DFWhere` / `SeriesWhere` and `get_required_columns()`.** These apply a wrapped operation only to rows matching a boolean mask, then merge the result back in. `DFWhere` (the DataFrame version) is genuinely optimized: `DataframeOperation` subclasses (`Column`, `SetColumn`, `DropColumns`, `Merge`, etc.) each implement `get_required_columns()`, and `DFWhere` walks the wrapped operation tree (`Operation.search()`) to infer exactly which columns it needs and changes — then slices the DataFrame down to just those columns before masking and copying, instead of copying the whole frame. It refuses to wrap `DropRows`, `DropColumns`, `RenameColumns`, or `Explode` (raising `InvalidOperationError`), since those would break the masking strategy.
 
 **Extractor → transforms → writer.** The idiomatic shape of a full pipeline is `Extractor >> transform_operations >> Writer`, as built up in [Quickstart](#quickstart) above.
 
-**Built-in observability.** Every `Operation` carries its own execution profiling — `enable_profiling()` / `disable_profiling()` toggle a custom cProfile-like recorder that tracks call counts and cumulative/self time *per operation instance*, correctly attributing time to whichever specific parent invoked a shared child operation (something a standard flat profiler can't do, since it only tracks time per function, not per position in a call graph). `profile_snakeviz(input)` runs the pipeline under this profiler and opens the result in [SnakeViz](https://jiffyclub.github.io/snakeviz/) inside a Jupyter notebook, using pstats-compatible output. Separately, `show_graph()` renders the pipeline's structure as a Graphviz diagram (via `pydot`), useful for seeing the shape of a deeply chained or forked pipeline at a glance. Both require the `viz` extra.
+**Built-in observability.** Every `Operation` tracks its own execution profile — `enable_profiling()`/`disable_profiling()` toggle a custom recorder that attributes call counts and cumulative/self time *per operation instance*, correctly splitting time across multiple parents that share a child operation (something a flat profiler can't do). `profile_snakeviz(input)` runs the pipeline under this profiler and opens the result in [SnakeViz](https://jiffyclub.github.io/snakeviz/) inside Jupyter. `show_graph()` renders the pipeline as a Graphviz diagram. Both require the `viz` extra.
 
 ## Operation catalogue
 
@@ -262,7 +262,7 @@ Extractors (`framechain/operations/pandas/record_extractors/`) turn raw input in
 
 - **`DelimitedRecordExtractor`** — the most commonly used extractor; wraps `pandas.read_csv` with per-field dtype injection via typed `Field` classes (`IntegerField`, `NumberField`, `TimestampField`, `StringField`, ...), as used in the quickstart above.
 - **`BinaryFixedWidthRecordExtractor`** ("BFW") — byte-offset/length field records, used originally for legacy telecom switch output formats.
-- **`ASN1BERRecordExtractor`** — a hand-written ASN.1 BER decoder for telecom CDR/billing-record formats, selecting fields by ASN.1 tag path. This is the most involved piece of the codebase's telecom heritage, and worth a look in `framechain/operations/pandas/record_extractors/asn1_ber/` if you're interested in binary protocol decoding. It also ships **experimental Cython- and Numba-accelerated decoder variants** (`asn1_decoder_cython.py`, `asn1_decoder_numba.py`, behind the `cython-experiments`/`numba-experiments` extras) as drop-in replacements for the pure-Python decoder — kept in the repo as a deliberate performance-engineering exploration rather than the default code path.
+- **`ASN1BERRecordExtractor`** — a hand-written ASN.1 BER decoder for telecom CDR/billing records, selecting fields by ASN.1 tag path. The most involved part of the codebase's telecom heritage — see `framechain/operations/pandas/record_extractors/asn1_ber/`. Also ships **experimental Cython- and Numba-accelerated decoder variants** (behind the `cython-experiments`/`numba-experiments` extras) as drop-in replacements — kept as a performance-engineering exploration, not the default path.
 - **`RegexRecordExtractor`** and **`ASCIIPartitionedRecordExtractor`** — regex- and fixed-position-based extractors, marked as experimental/unfinished in their own docstrings.
 
 Writers/exporters (`framechain/operations/io/writers.py`, `framechain/operations/pandas/output_generators/`) send a pipeline's output somewhere:
@@ -274,7 +274,7 @@ Writers/exporters (`framechain/operations/io/writers.py`, `framechain/operations
 
 ## Notes / gotchas
 
-- **`pd.set_option('mode.chained_assignment', 'raise')` is set at import time.** Importing `framechain.operations.pandas.constructors` (which happens transitively via `framechain.operations.pandas`) sets this pandas option globally for the process, so any ambiguous chained-assignment elsewhere in your code will raise a `SettingWithCopyError` instead of the default warning. This is a deliberate defensive choice — the library relies on precise DataFrame copy semantics internally and would rather fail loudly than risk a silent incorrect write — but it *is* a global side effect of importing the package, worth knowing about if you use pandas elsewhere in the same process.
+- **`pd.set_option('mode.chained_assignment', 'raise')` is set at import time.** Importing `framechain.operations.pandas` sets this pandas option globally, so any ambiguous chained assignment elsewhere in your process will raise `SettingWithCopyError` instead of just warning. Deliberate — the library relies on precise copy semantics internally — but it's a global side effect worth knowing about if you use pandas elsewhere in the same process.
 - **`AsType(to_type=str)` raises by default.** Pass `allow_str=True` if you really want `.astype(str)`; otherwise you'll get an `OperationConfigurationError` explaining why (it silently turns `NaN` into the string `"nan"`).
 - **`DFWhere` will raise `InvalidOperationError`** if you nest `DropRows`, `DropColumns`, `RenameColumns`, or `Explode` inside it — these operations change row/column structure in ways that break its masking strategy.
 - **Errors raised deep in a pipeline are wrapped in `OperationError`**, which records the full nested-operation call stack (innermost first) so you can see exactly which operation, at which point in a long chain, failed — rather than a bare traceback into `pandas` internals.
