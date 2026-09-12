@@ -13,3 +13,4 @@ framechain/operations/pandas/record_extractors/asn1_ber/*.html
 framechain/operations/pandas/record_extractors/asn1_ber/*.so
 framechain/operations/pandas/record_extractors/asn1_ber/*.pyd
 /data/
+/output/

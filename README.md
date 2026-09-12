@@ -1,16 +1,14 @@
 # framechain
 
-A composable, operator-overloaded pandas ETL and data-pipeline construction library — you build pipelines by writing expressions like `Column('fare') * 1.1`, not by wiring up tasks in a DAG.
+A library for declaratively building data-transformation pipelines on top of pandas. Pipelines are assembled from small, configurable `Operation` classes with simple interfaces — declare what each step should do, and the library handles doing it correctly and efficiently in pandas underneath: dtype coercion, copy semantics, conditional/masked application, column-scoped operations, and the other easy-to-get-wrong parts of the pandas API.
 
-## Status
+> Personal project, built while working at a telco data platform (~2021–2022). Not published to PyPI, not actively maintained — published here as a portfolio piece, not a supported package.
 
-This library was built ~2021–2022 while working on a telco data platform, as an internal tool for constructing high-volume batch data pipelines (CSV, binary switch records, ASN.1-encoded billing records). It is being published here as a portfolio piece to show the design, **not** as an actively maintained open-source project. There is no roadmap, no issue triage, and no guarantee of future updates — treat it as a snapshot of a real, working piece of infrastructure rather than a supported package. It has been updated for pandas 2.x compatibility and had employer-specific content removed prior to publishing, but otherwise reflects the code as it was written on the job.
+A pipeline is built from three kinds of component, each just an `Operation`: **extractors** parse raw input (CSV, fixed-width binary records, ASN.1-encoded records, …) into a pandas DataFrame; **operations** filter, join, and transform that data — including applying a transform to only specific columns or only rows matching a condition, without copying the whole DataFrame to do it; and **writers** send the result somewhere. Chaining all three together with `>>` produces one runnable pipeline object, which also gets execution profiling and Graphviz-based visualization for free.
 
 ## Philosophy
 
-Most Python ETL/pipeline tools fall into one of two camps: an orchestrator that schedules a DAG of opaque tasks (Airflow, Prefect, Dagster), or a thin wrapper around "just write a function." This library takes a different approach entirely: **a pipeline is a single composed object built entirely from operator overloading, with no executor or scheduler underneath it.**
-
-The base class, `Operation` (`framechain/operations/base.py`), overloads:
+This library is built entirely on Python's operator overloading: a pipeline is a single composed `Operation` object. The base class, `Operation` (`framechain/operations/base.py`), overloads:
 
 - `>>` — chain operations sequentially (output of the left becomes input of the right), auto-flattening nested chains into one `ChainedOperations`
 - `&`, `|`, `~` — boolean-style combination and inversion
@@ -26,9 +24,30 @@ Column('vendor_id') > 0
 (Column('dropoff_timestamp') - Column('pickup_timestamp')) >> TimedeltaToSeconds()
 ```
 
+Composed into a full pipeline, that same style looks like this — an extractor parses a CSV into a DataFrame, a couple of transforms clean it up and derive a new column, and a writer exports the result, all chained with `>>` into one callable:
+
+```python
+record_extractor = DelimitedRecordExtractor(fields=[
+    IntegerField('vendor_id', column_id='VendorID', size=8),
+    TimestampField('pickup_timestamp', column_id='tpep_pickup_datetime'),
+    TimestampField('dropoff_timestamp', column_id='tpep_dropoff_datetime'),
+])
+
+pipeline = (
+    LocalFileReader() >> record_extractor
+    >> DropRows(Column('vendor_id') >> IsNull())
+    >> SetColumn('trip_duration', (Column('dropoff_timestamp') - Column('pickup_timestamp')) >> TimedeltaToSeconds())
+    >> DataFrameToCSVExporter() >> LocalFileWriter('output/trips.csv')
+)
+
+pipeline('data/yellow_tripdata_2021-01.csv')
+```
+
+(imports omitted for brevity — the [Quickstart](#quickstart) below builds this same pipeline up in full, one component at a time, with imports, profiling, and visualization)
+
 ...while remaining **lazy, composable and introspectable** rather than eagerly evaluated. Every operator call just builds a small tree of `Operation` objects; nothing runs until the resulting object is called with an input. A raw Python value or plain function dropped into that expression is auto-wrapped as a `Value` or `Lambda` operation by `convert_to_operation()`, so scalars and callables compose transparently alongside `Operation` instances.
 
-Because every node in a pipeline is a plain object (not a string reference into a workflow engine's task graph), the framework gets several capabilities essentially for free — most notably built-in profiling and visualization (see [Core concepts](#core-concepts) below) that apply uniformly to *any* pipeline, however it's composed, without additional instrumentation.
+Because every node in a pipeline is a plain, introspectable Python object, the library gets several capabilities essentially for free — most notably built-in profiling and visualization (see [Quickstart](#quickstart) and [Core concepts](#core-concepts) below) that apply uniformly to *any* pipeline, however it's composed, without additional instrumentation.
 
 ## Installation
 
@@ -55,9 +74,11 @@ Core runtime dependencies are just `pandas`, `numpy`, `pytz`, and `python-dateut
 
 ## Quickstart
 
-This walks through the pipeline built in `Demo.ipynb` over the public [NYC TLC Yellow Taxi trip data](https://www1.nyc.gov/site/tlc/about/tlc-trip-record-data.page) — extract typed columns from a CSV, clean and derive new columns, then profile the whole thing. See the notebook for the full walkthrough with live output.
+This builds a pipeline over the public [NYC TLC Yellow Taxi trip data](https://www1.nyc.gov/site/tlc/about/tlc-trip-record-data.page), one component at a time — an extractor, some operations, and a writer — then chains them together. See `Demo.ipynb` for the same pipeline as a runnable notebook.
 
-**Extract** a typed DataFrame directly from the CSV — each `Field` declares its own dtype/parsing, so there's no separate `read_csv()` + coercion step:
+### Extractors
+
+An extractor parses raw input into a typed pandas DataFrame. Each field declares its own name, source column, and dtype, so there's no separate `read_csv()` + manual coercion step:
 
 ```python
 from framechain.operations.io import LocalFileReader
@@ -85,7 +106,9 @@ read_extract_records = LocalFileReader() >> record_extractor
 df = read_extract_records('data/yellow_tripdata_2021-01.csv')
 ```
 
-**Transform** — drop bad rows, derive a duration column, apply a conditional 10% card-payment surcharge, and compute a derived rate, all as composed `Operation`s:
+### Operations
+
+Operations filter, clean, and transform the DataFrame — composed the same way as any other `Operation`, using the overloaded operators from [Philosophy](#philosophy) above. This drops invalid rows, derives a trip-duration column, applies a 10% surcharge only to card payments without touching any other rows, and computes a derived rate:
 
 ```python
 from framechain.operations.pandas import DropRows, Column, IsNull, TimedeltaToSeconds, SetColumn, DFWhere
@@ -110,14 +133,38 @@ calculate_cost_per_passenger_per_minute = SetColumn(
 transforms = remove_bad_data >> calculate_duration >> add_card_surcharge >> calculate_cost_per_passenger_per_minute
 ```
 
-**Run and profile** the whole thing, extraction included, end to end:
+`add_card_surcharge` deliberately uses `DFWhere` rather than a plain `df.loc[mask, 'fare_amount'] *= 1.1` — see [Core concepts](#core-concepts) for why that matters beyond style.
+
+### Output generators
+
+Output generators/writers send the result somewhere. Exporting a DataFrame to a format (CSV, here) and writing the result out are separate, composable steps:
 
 ```python
-full_pipeline = read_extract_records >> transforms
-full_pipeline.profile_snakeviz('data/yellow_tripdata_2021-01.csv')  # opens a SnakeViz flame graph in Jupyter
+from framechain.operations.pandas import DataFrameToCSVExporter
+from framechain.operations.io import LocalFileWriter
+
+write_output = DataFrameToCSVExporter() >> LocalFileWriter('output/trips_transformed.csv')
 ```
 
-`add_card_surcharge` deliberately uses `DFWhere` rather than a plain `df.loc[mask, 'fare_amount'] *= 1.1` — see [Core concepts](#core-concepts) for why that matters beyond style.
+### Putting it together
+
+Each of the three components above is just an `Operation`, so they chain together the same way as anything else, into one pipeline running from a raw file path to a written output file:
+
+```python
+full_pipeline = read_extract_records >> transforms >> write_output
+full_pipeline('data/yellow_tripdata_2021-01.csv')
+```
+
+The same pipeline object also gives you profiling and visualization for free, with no extra setup:
+
+```python
+full_pipeline.profile_snakeviz('data/yellow_tripdata_2021-01.csv')  # opens a SnakeViz flame graph in Jupyter
+full_pipeline.show_graph()  # renders the pipeline structure as a Graphviz diagram
+```
+
+![Graph of the pipeline built above, generated by show_graph()](docs/pipeline_graph.svg)
+
+*The actual output of `show_graph()` for the pipeline built above.*
 
 ## Core concepts
 
@@ -127,7 +174,7 @@ full_pipeline.profile_snakeviz('data/yellow_tripdata_2021-01.csv')  # opens a Sn
 
 **`DFWhere` / `SeriesWhere` and `get_required_columns()`.** These conditionally apply a wrapped operation to only the rows matching a boolean mask, then integrate the result back into the original data. `DFWhere` (the DataFrame version) is genuinely optimized, not just a convenience wrapper: `DataframeOperation` subclasses (`Column`, `SetColumn`, `DropColumns`, `Merge`, etc., in `framechain/operations/pandas/base.py`) each implement `get_required_columns()`, and `DFWhere` walks the operation tree it wraps (via `Operation.search()`) to automatically infer exactly which columns the wrapped transform needs and which it changes. It then slices the DataFrame down to only those columns before masking and copying, instead of copying the whole frame — a meaningful performance/memory win on wide DataFrames, derived directly from the pipeline's own structure rather than hand-tuned. `DFWhere` explicitly refuses to wrap `DropRows`, `DropColumns`, `RenameColumns`, or `Explode` (raising `InvalidOperationError`), since row/column-dropping operations inside it would break the masking/reintegration strategy.
 
-**Extractor → transforms → writer.** The idiomatic shape of a full pipeline is `Extractor >> transform_operations >> Writer`. Extractors turn raw bytes/text into a typed `DataFrame`; transforms are ordinary composed `Operation`s; writers/exporters send the result somewhere.
+**Extractor → transforms → writer.** The idiomatic shape of a full pipeline is `Extractor >> transform_operations >> Writer`, as built up in [Quickstart](#quickstart) above.
 
 **Built-in observability.** Every `Operation` carries its own execution profiling — `enable_profiling()` / `disable_profiling()` toggle a custom cProfile-like recorder that tracks call counts and cumulative/self time *per operation instance*, correctly attributing time to whichever specific parent invoked a shared child operation (something a standard flat profiler can't do, since it only tracks time per function, not per position in a call graph). `profile_snakeviz(input)` runs the pipeline under this profiler and opens the result in [SnakeViz](https://jiffyclub.github.io/snakeviz/) inside a Jupyter notebook, using pstats-compatible output. Separately, `show_graph()` renders the pipeline's structure as a Graphviz diagram (via `pydot`), useful for seeing the shape of a deeply chained or forked pipeline at a glance. Both require the `viz` extra.
 
