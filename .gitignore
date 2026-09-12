@@ -1,5 +1,6 @@
 .idea/
 venv
+.claude/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -11,3 +12,4 @@ etl_framework/operations/pandas/record_extractors/asn1_ber/*.c
 etl_framework/operations/pandas/record_extractors/asn1_ber/*.html
 etl_framework/operations/pandas/record_extractors/asn1_ber/*.so
 etl_framework/operations/pandas/record_extractors/asn1_ber/*.pyd
+/data/
